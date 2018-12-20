@@ -96,6 +96,8 @@ class WriteData:
 
     def write_data(self, keyspace, data_instance):
 
+        if(type(data_instance) is str):
+            data_instance = json.loads(data_instance)
         column_family = self.get_column_family(data_instance["cenote"]["url"])
 
         if(not self.ch.check_if_table_exists(keyspace, column_family)):
