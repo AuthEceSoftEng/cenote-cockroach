@@ -105,7 +105,7 @@ class WriteData:
             res = self.create_table(keyspace, column_family, col_specs)
 
             if(res["response"] == 201):
-                data = self.create_data_write_obj(data_instance["data"])
+                data = self.create_data_write_obj(data_instance["data"], [])
                 data = self.append_cenote_info(data_instance, data, initial_state=True)
 
                 res = self.ch.write_data(keyspace, column_family, data)
