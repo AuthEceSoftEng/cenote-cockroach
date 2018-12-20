@@ -4,8 +4,8 @@ from cassandra.cluster import Cluster
 from cassandra.policies import DCAwareRoundRobinPolicy
 from cassandra.query import ordered_dict_factory
 
-from utils.properties import CassandraPort, ClusterIPs
- 
+from CassandraHandler.utils.properties import CassandraPort, ClusterIPs
+
 class CassandraHandler:
     """
     This class implements a handler for the Apache Cassandra database.
@@ -19,19 +19,19 @@ class CassandraHandler:
             # Connect to cluster
             self.cluster = Cluster(ClusterIPs, load_balancing_policy=DCAwareRoundRobinPolicy(), port = CassandraPort)
             self.session = self.cluster.connect()
- 
+
             # Get available keyspaces
             self.keyspaces = [key.keyspace_name for key in self.session.execute('SELECT * FROM system_schema.keyspaces')]
- 
+
             # Set Ordered dict as queries responses
             self.session.row_factory = ordered_dict_factory
         except Exception as e:
             raise(e)
- 
+
     def check_if_keyspace_exists(self, keyspace):
         """
         Checks whether a keyspace exists
- 
+
         :param keyspace: the name of the keyspace
         :returns: True/False
         """
@@ -39,46 +39,46 @@ class CassandraHandler:
             return True
         else:
             return False
- 
+
     def execute_query(self, query_string):
         """
         Executes a provided query and returns the response
- 
+
         :param query_string: the query
         :returns: The query response
         """
         return self.session.execute(query_string)
- 
- 
+
+
     def set_keyspace(self, keyspace):
         """
         Sets the keyspace to be used queries
- 
+
         :param keyspace: the name of the keyspace
         """
         if(self.check_if_keyspace_exists(keyspace)):
             self.session.set_keyspace(keyspace)
         else:
             raise Exception("The requested keyspace (" + keyspace + ") does not exist")
- 
+
     def create_keyspace(self, keyspace_name):
         """
         Creates a new keyspace
- 
+
         :param keyspace_name: the name of the keyspace
         """
         query = """
             CREATE KEYSPACE %s
                 WITH replication = { 'class': 'SimpleStrategy', 'replication_factor': '2' }
         """ % keyspace_name
- 
+
         # It will raise an error if keyspace already exists
         self.execute_query(query)
- 
+
     def drop_keyspace(self, keyspace_name):
         """
         Deletes an existing keyspace
- 
+
         :param keyspace_name: the name of the keyspace
         """
         query = "DROP KEYSPACE %s" % keyspace_name
@@ -86,23 +86,23 @@ class CassandraHandler:
             self.execute_query(query)
         else:
             raise Exception("The requested keyspace (" + keyspace_name + ") does not exist")
- 
+
     def get_keyspace_tables(self, keyspace):
         """
         Retrieve the information of the tables for a given keyspace
- 
+
         :param keyspace: the name of the keyspace
         """
         query = "SELECT * FROM system_schema.tables WHERE keyspace_name='%s'" % keyspace
         results = self.execute_query(query)
         tables_info = [table_info for table_info in results]
- 
+
         return tables_info
 
     def check_if_table_exists(self, keyspace, table):
         """
         Check if a given table exists in a given keyspace
- 
+
         :param keyspace: the name of the keyspace
         :param table: the name of the table
         :returns: True/False depending on whether the keyspace exists
@@ -110,13 +110,13 @@ class CassandraHandler:
         query = "SELECT table_name FROM system_schema.tables WHERE keyspace_name='%s'" % keyspace
         results = self.execute_query(query)
         tables_info = [table_info["table_name"] for table_info in results]
-        
+
         return table in tables_info
-        
+
     def create_table(self, keyspace, table_name, column_specs):
         """
         Registers a new table in a given keyspace
- 
+
         :param keyspace: the name of the keyspace
         :param table_name: the name of the table
         :param column_specs: An array of objects, each containing the column specifications
@@ -142,18 +142,18 @@ class CassandraHandler:
         query = """
             CREATE TABLE %s.%s %s
         """ % (keyspace, table_name, column_declarator)
-        
+
         try:
             self.execute_query(query)
         except Exception as e:
             return { "response":400, "exception": e }
-        
+
         return { "response":201 }
- 
+
     def write_data(self, keyspace, table_name, data_instance):
         """
         Registers a new table in a given keyspace
- 
+
         :param keyspace: the name of the keyspace
         :param table_name: the name of the table
         :param data_instance: An array of objects that contain the values to be inserted in each column
@@ -171,7 +171,7 @@ class CassandraHandler:
         column_list = "("
         values_list = "("
         for (i, value_descriptor) in enumerate(data_instance):
- 
+
             column_list += value_descriptor["column"]
             if('value' in value_descriptor):
                 if(type(value_descriptor["value"]) is str):
@@ -185,7 +185,7 @@ class CassandraHandler:
                 values_list += ', '
         column_list += ")"
         values_list += ")"
- 
+
         query = """
             INSERT INTO %s.%s %s VALUES %s
         """ % (keyspace, table_name, column_list, values_list)
@@ -193,13 +193,13 @@ class CassandraHandler:
             self.execute_query(query)
         except Exception as e:
             return { "response":400, "exception": e }
-        
+
         return { "response":201 }
-    
+
     def update_data(self, keyspace, table_name, data_instance, uuid):
         """
         Updated a table row in a given keyspace based on the uuid
- 
+
         :param keyspace: the name of the keyspace
         :param table_name: the name of the table
         :param data_instance: An array of objects that contain the values to be inserted in each column
@@ -214,10 +214,10 @@ class CassandraHandler:
                 2) built_in_function: Provides the name of the cassandra built-in
                         function to be used for auto-generating the value
         """
-        
+
         args = ""
         for (i, value_descriptor) in enumerate(data_instance):
- 
+
             args += value_descriptor["column"] + "="
             if('value' in value_descriptor):
                 if(type(value_descriptor["value"]) is str):
@@ -228,8 +228,8 @@ class CassandraHandler:
                 args += value_descriptor["built_in_function"]
             if(i < (len(data_instance) - 1)):
                 args += ', '
-        
-        
+
+
         query = """
             UPDATE %s.%s SET %s WHERE uuid=%s
         """ % (keyspace, table_name, args, uuid)
@@ -237,5 +237,5 @@ class CassandraHandler:
             self.execute_query(query)
         except Exception as e:
             return { "response":400, "exception": e }
-         
+
         return { "response":201 }
