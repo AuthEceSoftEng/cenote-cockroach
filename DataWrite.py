@@ -43,19 +43,19 @@ class WriteData:
         for key in obj:
             if(type(obj[key]) is dict):
                 if(prev_key != ''):
-                    self.create_column_specs(obj[key], col_specs, prev_key + '_' + key)
+                    self.create_column_specs(obj[key], col_specs, prev_key + '_' + key.replace(' ', '').lower())
                 else:
-                    self.create_column_specs(obj[key], col_specs, key)
+                    self.create_column_specs(obj[key], col_specs, key.replace(' ', '').lower())
             else:
                 info = {}
                 if(prev_key != ''):
-                    info["name"] = prev_key + '_' + key
+                    info["name"] = prev_key + '_' + key.replace(' ', '').lower()
                 else:
-                    info["name"] = key
+                    info["name"] = key.replace(' ', '').lower()
                 if(type(obj[key]) is str):
                     info["type"] = "text"
                 else:
-                    info["type"] = "text"
+                    info["type"] = "float"
                 col_specs.append(info)
 
         return col_specs
@@ -65,15 +65,15 @@ class WriteData:
         for key in obj:
             if(type(obj[key]) is dict):
                 if(prev_key != ''):
-                    self.create_data_write_obj(obj[key], data, prev_key + '_' + key)
+                    self.create_data_write_obj(obj[key], data, prev_key + '_' + key.replace(' ', '').lower())
                 else:
-                    self.create_data_write_obj(obj[key], data, key)
+                    self.create_data_write_obj(obj[key], data, key.replace(' ', '').lower())
             else:
                 info = {}
                 if(prev_key != ''):
-                    info["column"] = prev_key + '_' + key
+                    info["column"] = prev_key + '_' + key.replace(' ', '').lower()
                 else:
-                    info["column"] = key
+                    info["column"] = key.replace(' ', '').lower()
                 info["value"] = obj[key]
 
                 data.append(info)
@@ -107,7 +107,7 @@ class WriteData:
             if(res["response"] == 201):
                 data = self.create_data_write_obj(data_instance["data"], [])
                 data = self.append_cenote_info(data_instance, data, initial_state=True)
-
+                
                 res = self.ch.write_data(keyspace, column_family, data)
 
                 return res
