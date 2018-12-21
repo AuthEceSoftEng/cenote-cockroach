@@ -101,7 +101,7 @@ class WriteData:
         column_family = self.get_column_family(data_instance["cenote"]["url"])
 
         if(not self.ch.check_if_table_exists(keyspace, column_family)):
-            col_specs = self.create_column_specs(data_instance["data"])
+            col_specs = self.create_column_specs(data_instance["data"], [])
             res = self.create_table(keyspace, column_family, col_specs)
 
             if(res["response"] == 201):
