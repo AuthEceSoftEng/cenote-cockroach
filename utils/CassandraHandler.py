@@ -1,9 +1,7 @@
 import json
-
 from cassandra.cluster import Cluster
 from cassandra.policies import DCAwareRoundRobinPolicy
 from cassandra.query import ordered_dict_factory
-
 from CassandraHandler.utils.properties import CassandraPort, ClusterIPs
 
 class CassandraHandler:
@@ -152,7 +150,7 @@ class CassandraHandler:
 
     def write_data(self, keyspace, table_name, data_instance):
         """
-        Registers a new table in a given keyspace
+        Writes data into a certain column family
 
         :param keyspace: the name of the keyspace
         :param table_name: the name of the table
@@ -195,6 +193,52 @@ class CassandraHandler:
             return { "response":400, "exception": e }
 
         return { "response":201 }
+    
+    def read_data(self, keyspace, table_name, list_of_columns, conditions):
+        """
+        Reads data from a certain column family
+
+        :param keyspace: the name of the keyspace
+        :param table_name: the name of the table
+        :param list_of_columns: An array containing the list of the columns to be returned
+        :param condtitions: An array of objects that contain the select specifications per column
+                Example object:
+                    e.g.:{
+                            "column": "name_of_column",
+                            "operand": ""
+                            "value": "the_value_to_be_inserted",
+                        }
+            The supported operands are the following:
+                1) value: Contains the raw value to be inserted into the table
+                2) built_in_function: Provides the name of the cassandra built-in
+                        function to be used for auto-generating the value
+        """
+        
+        select_clause = ', '.join(list_of_columns) if (isinstance(list_of_columns, list) and len(list_of_columns) > 0) else "*"
+        
+        if(len(conditions) > 0):
+            where_clause = "WHERE"
+            for (i, condition) in enumerate(conditions):
+                if(type(condition["value"]) is str):
+                    where_clause += " " + condition["column"] + " " + condition["operand"] + " '" + str(condition["value"]) + "'"
+                else:
+                    where_clause += " " + condition["column"] + " " + condition["operand"] + " " + str(condition["value"])
+                if(i < (len(conditions) - 1)):
+                    where_clause += " AND"
+        else:
+            where_clause = ""
+        
+        query = """
+             SELECT %s FROM %s.%s %s ALLOW FILTERING
+        """ % (select_clause, keyspace, table_name, where_clause)
+        
+        try:
+            data = [dict(item) for item in self.execute_query(query)]
+        except Exception as e:
+            return { "response":400, "exception": e }
+  
+        return { "response":200, "data": data }
+
 
     def update_data(self, keyspace, table_name, data_instance, uuid):
         """
