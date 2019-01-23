@@ -1,7 +1,10 @@
 import json
 import datetime
 from CassandraHandler.utils.CassandraHandler import CassandraHandler
-from CassandraHandler.utils.helpers import get_time_in_ms, time_to_datetime_in_ms, time_in_ms_to_str
+from CassandraHandler.utils.helpers import get_time_in_ms, time_to_datetime_in_ms
+from CassandraHandler.utils.operations import count_selector, min_selector, \
+                             max_selector, average_selector, \
+                             sum_selector, median
 
 class ReadData:
     """
@@ -45,16 +48,47 @@ class ReadData:
 
     def read_data(self, keyspace, list_of_columns, request_info):
 
-        if(type(request_info) is str):
+        if(isinstance(request_info, str)):
             request_info = json.loads(request_info)
-            
         column_family = self.get_column_family(request_info["cenote"]["url"])
-        
         if(self.ch.check_if_table_exists(keyspace, column_family)):
             curr_state = {}
             conditions = self.create_time_conditions(request_info["cenote"])
             res = self.ch.read_data(keyspace, column_family, list_of_columns, conditions)
             
             return res
+        else:
+            return { "response": 400, "exception": "The column family: " + column_family + " does not exist" }
+    
+    def perform_operation(self, keyspace, list_of_columns, type, request_info):
+
+        if(isinstance(request_info, str)):
+            request_info = json.loads(request_info)
+        column_family = self.get_column_family(request_info["cenote"]["url"])
+        
+        if(self.ch.check_if_table_exists(keyspace, column_family)):
+            if(isinstance(list_of_columns, list) and len(list_of_columns) > 0):
+                curr_state = {}
+                conditions = self.create_time_conditions(request_info["cenote"])
+                # Build-in operations
+                if(type == 'count'):
+                    list_of_columns = count_selector(list_of_columns)
+                if(type == 'min'):
+                    list_of_columns = min_selector(list_of_columns)
+                if(type == 'max'):
+                    list_of_columns = max_selector(list_of_columns)
+                if(type == 'average'):
+                    list_of_columns = average_selector(list_of_columns)
+                if(type == 'sum'):
+                    list_of_columns = sum_selector(list_of_columns)
+                res = self.ch.read_data(keyspace, column_family, list_of_columns, conditions)
+                
+                # Custom operations
+                if(type == 'median'):
+                    res["data"] = median(list_of_columns, res["data"])
+                
+                return res
+            else:
+                return { "response": 400, "exception": "At least one column should be selected" }
         else:
             return { "response": 400, "exception": "The column family: " + column_family + " does not exist" }
