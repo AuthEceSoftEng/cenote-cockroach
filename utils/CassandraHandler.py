@@ -147,6 +147,23 @@ class CassandraHandler:
             return { "response":400, "exception": e }
 
         return { "response":201 }
+    
+    def describe_table(self, keyspace, table_name):
+        
+        conditions = []
+        conditions.append({
+                "column": "keyspace_name",
+                "operand": "=",
+                "value": keyspace
+            })
+        conditions.append({
+                "column": "table_name",
+                "operand": "=",
+                "value": table_name
+            })
+        res = self.read_data("system_schema", "columns", 'all', conditions)
+        
+        return res["data"]
 
     def write_data(self, keyspace, table_name, data_instance):
         """
