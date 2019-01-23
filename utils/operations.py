@@ -27,3 +27,15 @@ def median(list_of_columns, data):
         info.append({"system.median(" + col + ")": np.median([val[col] for val in data])})
     
     return info
+
+def percentile(list_of_columns, data, q):
+    
+    # percentile value should be in the interval [0, 100]
+    q = 0 if q < 0 else q
+    q = 100 if q > 100 else q
+    
+    info = []
+    for col in list_of_columns:
+        info.append({"system.percentile_" + str(q) + "(" + col + ")": np.percentile([val[col] for val in data], q)})
+    
+    return info

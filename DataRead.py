@@ -4,7 +4,7 @@ from CassandraHandler.utils.CassandraHandler import CassandraHandler
 from CassandraHandler.utils.helpers import get_time_in_ms, time_to_datetime_in_ms
 from CassandraHandler.utils.operations import count_selector, min_selector, \
                              max_selector, average_selector, \
-                             sum_selector, median
+                             sum_selector, median, percentile
 
 class ReadData:
     """
@@ -86,7 +86,11 @@ class ReadData:
                 # Custom operations
                 if(type == 'median'):
                     res["data"] = median(list_of_columns, res["data"])
-                
+                if(type == 'percentile'):
+                    if("percentile" in request_info["cenote"]):
+                        res["data"] = percentile(list_of_columns, res["data"], request_info["cenote"]["percentile"])
+                    else:
+                        return { "response": 400, "exception": "When operation is of type percentile, you must specify the percentile (e.g. 10)" }
                 return res
             else:
                 return { "response": 400, "exception": "At least one column should be selected" }
