@@ -163,7 +163,7 @@ class CassandraHandler:
             })
         res = self.read_data("system_schema", "columns", 'all', conditions)
         
-    return res["data"]
+        return res["data"]
 
     def describe_collections(self, keyspace, project_id):
 
