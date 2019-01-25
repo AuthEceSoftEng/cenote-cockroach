@@ -163,8 +163,28 @@ class CassandraHandler:
             })
         res = self.read_data("system_schema", "columns", 'all', conditions)
         
-        return res["data"]
+    return res["data"]
 
+    def describe_collections(self, keyspace, project_id):
+
+        conditions = []
+        conditions.append({
+            "column": "keyspace_name",
+            "operand": "=",
+            "value": keyspace
+        })
+        res = self.read_data("system_schema", "columns", 'all', conditions)
+        
+        collections = {}
+    
+        for col in filter(lambda x: x["table_name"].startswith(project_id) and x["type"] != "uuid", res["data"]):
+            event_collection = col["table_name"].split("_")[1]
+            if event_collection not in collections:
+                collections[event_collection] = []
+            collections[event_collection].append({"column_name": col["column_name"], "type": col["type"]})
+        
+        return collections
+        
     def write_data(self, keyspace, table_name, data_instance):
         """
         Writes data into a certain column family
