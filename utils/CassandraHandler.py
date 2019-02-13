@@ -141,7 +141,61 @@ class CassandraHandler:
             CREATE TABLE %s.%s %s
         """ % (keyspace, table_name, column_declarator)
         
-        print(query)
+        try:
+            self.execute_query(query)
+        except Exception as e:
+            return { "response":400, "exception": e }
+
+        return { "response":201 }
+    
+    def alter_table(self, keyspace, table_name, column_specs, type):
+        """
+        Alters a pre-existing table in a given keyspace
+
+        :param keyspace: the name of the keyspace
+        :param table_name: the name of the table
+        :param column_specs: An array of objects, each containing the column specifications
+                Example object:
+                    e.g.:{
+                            "name": "name_of_column",
+                            "type": "type_of_column",
+                            "primary_key": "yes"
+                        }
+            For columns that should not be primary keys DO NOT USE the key: primary-key in the specifications
+            The type can be any of the data types described in the following url:
+            https://docs.datastax.com/en/cql/3.3/cql/cql_reference/cql_data_types_c.html
+        :param type: ADD or DROP
+        """
+        
+        if(type == "ADD"):
+            column_declarator = "("
+            for (i, column) in enumerate(column_specs):
+                if("primary_key" in column):
+                    column_declarator += '"' + column["name"] + '" ' + column["type"] + " PRIMARY KEY"
+                else:
+                    column_declarator += '"' + column["name"] + '" ' + column["type"]
+                if(i < (len(column_specs) - 1)):
+                    column_declarator += ', '
+            column_declarator += ")"
+            
+            query = """
+                ALTER TABLE %s.%s ADD %s
+            """ % (keyspace, table_name, column_declarator)
+        elif(type == "DROP"):
+            column_declarator = "("
+            for (i, column) in enumerate(column_specs):
+                if("primary_key" in column):
+                    column_declarator += '"' + column["name"] + '"'
+                else:
+                    column_declarator += '"' + column["name"] + '"'
+                if(i < (len(column_specs) - 1)):
+                    column_declarator += ', '
+            column_declarator += ")"
+            
+            query = """
+                ALTER TABLE %s.%s DROP %s
+            """ % (keyspace, table_name, column_declarator)
+        
         try:
             self.execute_query(query)
         except Exception as e:
@@ -226,7 +280,6 @@ class CassandraHandler:
             INSERT INTO %s.%s %s VALUES %s
         """ % (keyspace, table_name, column_list, values_list)
         
-        print(query)
         try:
             self.execute_query(query)
         except Exception as e:

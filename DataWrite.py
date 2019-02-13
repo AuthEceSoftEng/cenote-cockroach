@@ -100,9 +100,10 @@ class WriteData:
         if(type(data_instance) is str):
             data_instance = json.loads(data_instance)
         column_family = self.get_column_family(data_instance["cenote"]["url"])
-
+        
+        col_specs = self.create_column_specs(data_instance["data"], [])
+        
         if(not self.ch.check_if_table_exists(keyspace, column_family)):
-            col_specs = self.create_column_specs(data_instance["data"], [])
             res = self.create_table(keyspace, column_family, col_specs)
 
             if(res["response"] == 201):
@@ -119,6 +120,13 @@ class WriteData:
 
             data = self.create_data_write_obj(data_instance["data"], [])
             data = self.append_cenote_info(data_instance, data, initial_state=True, curr_state=curr_state)
+            
+            # Create missing columns in current schema
+            current_schema_cols = [val["column_name"] for val in self.ch.describe_table(keyspace, column_family)]
+            cols_to_be_Added = [val for val in col_specs if val['name'] not in current_schema_cols]
+            if(len(cols_to_be_Added) > 0):
+                self.ch.alter_table(keyspace, column_family, cols_to_be_Added, "ADD")
+            
             res = self.ch.write_data(keyspace, column_family, data)
 
             return res
