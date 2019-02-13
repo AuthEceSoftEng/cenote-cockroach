@@ -13,6 +13,7 @@ class WriteData:
         """
         self.ch = CassandraHandler()
         self.excluded_columns = ["uuid"]
+        self.nested_properties_sep = '.'
 
     def create_table(self, keyspace, table_name, column_specs):
 
@@ -20,9 +21,9 @@ class WriteData:
         column_specs.append({"name": "uuid", "type": "UUID", "primary_key": "yes"})
 
         # Every table should have a cenote created_at column, a timestamp end column and an id column
-        column_specs.append({"name": "cenote_created_at", "type": "timestamp"})
-        column_specs.append({"name": "cenote_timestamp", "type": "timestamp"})
-        column_specs.append({"name": "cenote_id", "type": "text"})
+        column_specs.append({"name": "cenote" + self.nested_properties_sep + "created_at", "type": "timestamp"})
+        column_specs.append({"name": "cenote" + self.nested_properties_sep + "timestamp", "type": "timestamp"})
+        column_specs.append({"name": "cenote" + self.nested_properties_sep + "id", "type": "text"})
 
         return self.ch.create_table(keyspace, table_name, column_specs)
 
@@ -43,13 +44,13 @@ class WriteData:
         for key in obj:
             if(type(obj[key]) is dict):
                 if(prev_key != ''):
-                    self.create_column_specs(obj[key], col_specs, prev_key + '_' + key.replace(' ', '').lower())
+                    self.create_column_specs(obj[key], col_specs, prev_key + self.nested_properties_sep + key.replace(' ', '').lower())
                 else:
                     self.create_column_specs(obj[key], col_specs, key.replace(' ', '').lower())
             else:
                 info = {}
                 if(prev_key != ''):
-                    info["name"] = prev_key + '_' + key.replace(' ', '').lower()
+                    info["name"] = prev_key + self.nested_properties_sep + key.replace(' ', '').lower()
                 else:
                     info["name"] = key.replace(' ', '').lower()
                 if(type(obj[key]) is str):
@@ -65,13 +66,13 @@ class WriteData:
         for key in obj:
             if(type(obj[key]) is dict):
                 if(prev_key != ''):
-                    self.create_data_write_obj(obj[key], data, prev_key + '_' + key.replace(' ', '').lower())
+                    self.create_data_write_obj(obj[key], data, prev_key + self.nested_properties_sep + key.replace(' ', '').lower())
                 else:
                     self.create_data_write_obj(obj[key], data, key.replace(' ', '').lower())
             else:
                 info = {}
                 if(prev_key != ''):
-                    info["column"] = prev_key + '_' + key.replace(' ', '').lower()
+                    info["column"] = prev_key + self.nested_properties_sep + key.replace(' ', '').lower()
                 else:
                     info["column"] = key.replace(' ', '').lower()
                 info["value"] = obj[key]
@@ -87,9 +88,9 @@ class WriteData:
         else:
             timestamp = get_time_in_ms()
 
-        data.append({"column": "cenote_created_at", "value": obj["cenote"]["created_at"]})
-        data.append({"column": "cenote_timestamp", "value": timestamp})
-        data.append({"column": "cenote_id", "value": obj["cenote"]["id"]})
+        data.append({"column": "cenote" + self.nested_properties_sep + "created_at", "value": obj["cenote"]["created_at"]})
+        data.append({"column": "cenote" + self.nested_properties_sep + "timestamp", "value": timestamp})
+        data.append({"column": "cenote" + self.nested_properties_sep + "id", "value": obj["cenote"]["id"]})
         data.append({"column": "uuid", "built_in_function": "now()"})
 
         return data

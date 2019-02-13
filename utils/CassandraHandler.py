@@ -131,16 +131,17 @@ class CassandraHandler:
         column_declarator = "("
         for (i, column) in enumerate(column_specs):
             if("primary_key" in column):
-                column_declarator += column["name"] + " " + column["type"] + " PRIMARY KEY"
+                column_declarator += '"' + column["name"] + '" ' + column["type"] + " PRIMARY KEY"
             else:
-                column_declarator += column["name"] + " " + column["type"]
+                column_declarator += '"' + column["name"] + '" ' + column["type"]
             if(i < (len(column_specs) - 1)):
                 column_declarator += ', '
         column_declarator += ")"
         query = """
             CREATE TABLE %s.%s %s
         """ % (keyspace, table_name, column_declarator)
-
+        
+        print(query)
         try:
             self.execute_query(query)
         except Exception as e:
@@ -207,7 +208,7 @@ class CassandraHandler:
         values_list = "("
         for (i, value_descriptor) in enumerate(data_instance):
 
-            column_list += value_descriptor["column"]
+            column_list += '"' + value_descriptor["column"] + '"'
             if('value' in value_descriptor):
                 if(type(value_descriptor["value"]) is str):
                     values_list += "'" + str(value_descriptor["value"]) + "'"
@@ -224,6 +225,8 @@ class CassandraHandler:
         query = """
             INSERT INTO %s.%s %s VALUES %s
         """ % (keyspace, table_name, column_list, values_list)
+        
+        print(query)
         try:
             self.execute_query(query)
         except Exception as e:
@@ -299,7 +302,7 @@ class CassandraHandler:
         args = ""
         for (i, value_descriptor) in enumerate(data_instance):
 
-            args += value_descriptor["column"] + "="
+            args += '"' + value_descriptor["column"] + '"='
             if('value' in value_descriptor):
                 if(type(value_descriptor["value"]) is str):
                     args += "'" + str(value_descriptor["value"]) + "'"
