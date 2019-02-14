@@ -13,7 +13,7 @@ class WriteData:
         """
         self.ch = CassandraHandler()
         self.excluded_columns = ["uuid"]
-        self.nested_properties_sep = '.'
+        self.nested_properties_sep = '$'
 
     def create_table(self, keyspace, table_name, column_specs):
 
@@ -106,7 +106,9 @@ class WriteData:
         if(not self.ch.check_if_table_exists(keyspace, column_family)):
             res = self.create_table(keyspace, column_family, col_specs)
 
-            if(res["response"] == 201):
+            if(res["response"] == 201 or \
+               "java.lang.RuntimeException: java.util.concurrent.ExecutionException: org.apache.cassandra.exceptions.ConfigurationException: Column family ID mismatch" in str(res['exception'])
+               ):
                 data = self.create_data_write_obj(data_instance["data"], [])
                 data = self.append_cenote_info(data_instance, data, initial_state=True)
                 
@@ -114,6 +116,7 @@ class WriteData:
 
                 return res
             else:
+                
                 return res
         else:
             curr_state = {}
@@ -124,9 +127,12 @@ class WriteData:
             # Create missing columns in current schema
             current_schema_cols = [val["column_name"] for val in self.ch.describe_table(keyspace, column_family)]
             cols_to_be_Added = [val for val in col_specs if val['name'] not in current_schema_cols]
-            if(len(cols_to_be_Added) > 0):
-                self.ch.alter_table(keyspace, column_family, cols_to_be_Added, "ADD")
+            
+#             if(len(cols_to_be_Added) > 0):
+#                 self.ch.alter_table(keyspace, column_family, cols_to_be_Added, "ADD")
+            
+            data = [val for val in data if val['column'] in current_schema_cols]
             
             res = self.ch.write_data(keyspace, column_family, data)
-
+            
             return res
