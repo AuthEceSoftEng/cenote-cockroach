@@ -1,5 +1,1 @@
-# Set this to the cassandra cluster IPs
-ClusterIPs = ['snf-843197.vm.okeanos.grnet.gr']
-
-# Set this to the port through which the cassandra cluster is available
-CassandraPort = '9042'
+DATABASE_URL = 'postgres://cockroach@83.212.104.172:26257/cenote?sslmode=disable'

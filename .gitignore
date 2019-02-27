@@ -94,5 +94,6 @@ limit.txt
 # Eclipse project settings
 .project
 .pydevproject
+.idea
 
 
