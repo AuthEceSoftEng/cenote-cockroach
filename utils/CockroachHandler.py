@@ -71,7 +71,7 @@ class CockroachHandler:
             if i < (len(column_specs) - 1):
                 column_declarator += ', '
         column_declarator += ")"
-        query = "CREATE TABLE %s %s" % (table_name, column_declarator)
+        query = "CREATE TABLE IF NOT EXISTS %s %s" % (table_name, column_declarator)
         try:
             self.cur.execute(query)
         except Exception as e:
@@ -101,7 +101,7 @@ class CockroachHandler:
                         column_declarator += column["name"] + ' ' + column["type"] + " PRIMARY KEY"
                     else:
                         column_declarator += column["name"] + ' ' + column["type"]
-                    query = "ALTER TABLE %s ADD COLUMN %s" % (table_name, column_declarator)
+                    query = "ALTER TABLE IF EXISTS %s ADD COLUMN IF NOT EXISTS %s" % (table_name, column_declarator)
                     self.cur.execute(query)
             elif alter_type == "DROP":
                 for column in column_specs:
@@ -110,7 +110,7 @@ class CockroachHandler:
                         column_declarator += column["name"] + ' ' + column["type"] + " PRIMARY KEY"
                     else:
                         column_declarator += column["name"] + ' ' + column["type"]
-                    query = "ALTER TABLE %s ADD COLUMN %s" % (
+                    query = "ALTER TABLE IF EXISTS %s DROP COLUMN IF EXISTS %s" % (
                         table_name, column_declarator)
                     self.cur.execute(query)
         except Exception as e:
