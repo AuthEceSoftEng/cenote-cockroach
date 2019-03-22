@@ -119,9 +119,11 @@ class WriteData:
             data = self.append_cenote_info(data_instance, data)
 
             # Create missing columns in current schema
-            current_schema_cols = list(self.ch.describe_table(table).keys())
+            if self.ch.describe_table(table) is None:
+                current_schema_cols = [val["name"] for val in col_specs]
+            else:
+                current_schema_cols = list(self.ch.describe_table(table).keys())
             cols_to_be_added = [val for val in col_specs if val['name'] not in current_schema_cols]
-
             if len(cols_to_be_added) > 0:
                 self.ch.alter_table(table, cols_to_be_added)
                 current_schema_cols = list(self.ch.describe_table(table).keys())

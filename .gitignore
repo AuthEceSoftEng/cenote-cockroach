@@ -96,4 +96,7 @@ limit.txt
 .pydevproject
 .idea
 
+# Development stuff
+scriptaki.py
+
 
