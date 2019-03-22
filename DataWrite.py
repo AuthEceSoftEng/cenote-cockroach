@@ -1,7 +1,7 @@
 import json
+from datetime import datetime
 
 from utils.CockroachHandler import CockroachHandler
-from utils.helpers import get_time_in_iso, time_in_ms_to_iso
 
 
 class WriteData:
@@ -60,6 +60,8 @@ class WriteData:
                     info["name"] = key.replace(' ', '').lower()
                 if type(obj[key]) is str:
                     info["type"] = "string"
+                elif type(obj[key]) is bool:
+                    info["type"] = "bool"
                 else:
                     info["type"] = "decimal"
                 col_specs.append(info)
@@ -95,10 +97,10 @@ class WriteData:
         if "timestamp" in obj["cenote"].keys():
             timestamp = obj["cenote"]["timestamp"]
         else:
-            timestamp = get_time_in_iso()
+            timestamp = datetime.utcnow().isoformat()
 
         data.append({"column": "cenote" + self.nested_properties_sep + "created_at",
-                     "value": time_in_ms_to_iso(obj["cenote"]["created_at"])})
+                     "value": datetime.fromtimestamp(obj["cenote"]["created_at"] / 1e3).isoformat()})
         data.append({"column": "cenote" + self.nested_properties_sep + "timestamp", "value": timestamp})
         data.append({"column": "cenote" + self.nested_properties_sep + "id", "value": obj["cenote"]["id"]})
         data.append({"column": "uuid", "built_in_function": "gen_random_uuid()"})
@@ -110,35 +112,20 @@ class WriteData:
         if type(data_instance) is str:
             data_instance = json.loads(data_instance)
         table = self.get_table(data_instance["cenote"]["url"])
-
         col_specs = self.create_column_specs(data_instance["data"], [])
-        if not self.ch.check_if_table_exists(table):
-            res = self.create_table(table, col_specs)
-            if res["response"] == 201:
-                data = self.create_data_write_obj(data_instance["data"], [])
-                data = self.append_cenote_info(data_instance, data)
-
-                res = self.ch.write_data(table, data)
-
-                return res
-            else:
-
-                return res
-        else:
-
+        res = self.create_table(table, col_specs)
+        if res["response"] == 201:
             data = self.create_data_write_obj(data_instance["data"], [])
             data = self.append_cenote_info(data_instance, data)
 
             # Create missing columns in current schema
-            current_schema_cols = [val[0] for val in self.ch.describe_table(table)]
+            current_schema_cols = list(self.ch.describe_table(table).keys())
             cols_to_be_added = [val for val in col_specs if val['name'] not in current_schema_cols]
 
             if len(cols_to_be_added) > 0:
-                self.ch.alter_table(table, cols_to_be_added, "ADD")
-                current_schema_cols = [val[0] for val in self.ch.describe_table(table)]
+                self.ch.alter_table(table, cols_to_be_added)
+                current_schema_cols = list(self.ch.describe_table(table).keys())
 
             data = [val for val in data if val['column'] in current_schema_cols]
-
             res = self.ch.write_data(table, data)
-
-            return res
+        return res
