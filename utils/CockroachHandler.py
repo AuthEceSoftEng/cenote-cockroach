@@ -24,6 +24,10 @@ class CockroachHandler:
         except Exception as e:
             raise e
 
+    def __del__(self):
+        self.cur.close()
+        self.connection.close()
+
     def create_table(self, table_name, column_specs):
         """
         Registers a new table at the database
