@@ -17,7 +17,7 @@ class CockroachHandler:
         try:
             # Connect to cluster
             self.connection = psycopg2.connect(os.getenv(
-                'DATABASE_URL', 'postgres://cockroach@83.212.104.172:26257/cenote?sslmode=disable'),
+                'DATABASE_URL', 'postgres://cockroach@155.207.19.234:30591/cenote?sslmode=disable'),
                 cursor_factory=psycopg2.extras.DictCursor)
             self.connection.set_session(autocommit=True)
             self.cur = self.connection.cursor()

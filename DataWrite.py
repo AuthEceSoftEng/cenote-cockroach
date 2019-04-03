@@ -1,10 +1,10 @@
 import json
 from datetime import datetime
 
-from utils.CockroachHandler import CockroachHandler
+from .CockroachHandler import CockroachHandler
 
 
-class WriteData:
+class DataWrite:
     """
     This class implements the data write functionality in Cenote.
     """
