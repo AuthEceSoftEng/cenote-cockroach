@@ -1,8 +1,10 @@
+import json
 import os
 import re
 
 import psycopg2
 import psycopg2.extras
+import redis
 
 
 class CockroachHandler:
@@ -21,6 +23,8 @@ class CockroachHandler:
                 cursor_factory=psycopg2.extras.DictCursor)
             self.connection.set_session(autocommit=True)
             self.cur = self.connection.cursor()
+            self.r = redis.Redis(host=os.getenv('REDIT_HOST', 'localhost'), port=os.getenv('REDIS_PORT', 6379),
+                                 db=os.getenv('REDIS_DB', 0), decode_responses=True)
         except Exception as e:
             raise e
 
@@ -73,14 +77,13 @@ class CockroachHandler:
                 column_declarator = column["name"] + ' ' + column["type"]
                 if "primary_key" in column:
                     column_declarator += " PRIMARY KEY"
-                self.cur.execute(
-                    "ALTER TABLE IF EXISTS %s ADD COLUMN IF NOT EXISTS %s" % (table_name, column_declarator))
+                self.cur.execute(f"ALTER TABLE IF EXISTS {table_name} ADD COLUMN IF NOT EXISTS {column_declarator}")
         except Exception as e:
             return {"response": 400, "exception": e}
         return {"response": 201}
 
     def describe_table(self, table_name):
-        self.cur.execute("SELECT * FROM %s LIMIT 1" % table_name)
+        self.cur.execute(f"SELECT * FROM {table_name} LIMIT 1")
         return self.cur.fetchone()
 
     def write_data(self, table_name, data_instance):
@@ -117,11 +120,36 @@ class CockroachHandler:
         column_list = column_list[:-2] + ")"
         values_list = values_list[:-2] + ")"
 
-        query = "INSERT INTO %s %s VALUES %s" % (table_name, column_list, values_list)
+        query = f"INSERT INTO {table_name} {column_list} VALUES {values_list}"
 
         try:
             self.cur.execute(query)
         except Exception as e:
             return {"response": 400, "exception": e}
 
-        return {"response": 201}
+        redis_fail = False
+        for value_descriptor in data_instance:
+            if type(value_descriptor["value"]) is int or type(value_descriptor["value"]) is float:
+                try:
+                    self.update_running_values(table_name, value_descriptor["column"], value_descriptor["value"])
+                except:
+                    redis_fail = True
+
+        return {"response": 400} if redis_fail else {"response": 201}
+
+    def update_running_values(self, table_name, property_name, val):
+
+        def transaction_group(pipe):
+            old_vals = pipe.get(f"{table_name}_{property_name}")
+            new_vals = {}
+            if old_vals:
+                old_vals = json.loads(old_vals)
+                new_vals["count"] = old_vals["count"] + 1
+                new_vals["mean"] = old_vals["mean"] + (val - old_vals["mean"]) / new_vals["count"]
+                new_vals["inter"] = old_vals["inter"] + (val - old_vals["mean"]) * (val - new_vals["mean"])
+                new_vals["variance"] = new_vals["inter"] / old_vals["count"]
+            else:
+                new_vals = {"count": 1, "mean": val, "inter": 0, "variance": 0}
+            pipe.set(f"{table_name}_{property_name}", json.dumps(new_vals))
+
+        return self.r.transaction(transaction_group, f"{table_name}_{property_name}", watch_delay=0.1)
