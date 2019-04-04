@@ -1,4 +1,3 @@
-import json
 import os
 import re
 
@@ -24,7 +23,25 @@ class CockroachHandler:
             self.connection.set_session(autocommit=True)
             self.cur = self.connection.cursor()
             self.r = redis.Redis(host=os.getenv('REDIT_HOST', 'localhost'), port=os.getenv('REDIS_PORT', 6379),
-                                 db=os.getenv('REDIS_DB', 0), decode_responses=True)
+                                 db=os.getenv('REDIS_DB', 0))
+            lua_script = """
+                local old_vals = redis.call('get',KEYS[1])
+                local new_vals = {}
+                if (old_vals) then
+                    old_vals = cjson.decode(old_vals)
+                    new_vals["count"] = old_vals['count'] + 1
+                    local delta = ARGV[1] - old_vals["mean"]
+                    new_vals["mean"] = old_vals["mean"] + delta / new_vals["count"]
+                    new_vals["M2"] = old_vals["M2"] + delta * (ARGV[1] - new_vals["mean"])
+                    new_vals["variance"] = new_vals["M2"] / new_vals["count"]
+                else
+                    new_vals["count"] = 1
+                    new_vals["mean"] = ARGV[1]
+                    new_vals["M2"] = 0
+                    new_vals["variance"] = 0
+                end
+                redis.call('set', KEYS[1], cjson.encode(new_vals))"""
+            self.update_running_values = self.r.register_script(lua_script)
         except Exception as e:
             raise e
 
@@ -128,28 +145,11 @@ class CockroachHandler:
             return {"response": 400, "exception": e}
 
         redis_fail = False
-        for value_descriptor in data_instance:
-            if type(value_descriptor["value"]) is int or type(value_descriptor["value"]) is float:
+        for vd in data_instance:
+            if type(vd["value"]) is int or type(vd["value"]) is float:
                 try:
-                    self.update_running_values(table_name, value_descriptor["column"], value_descriptor["value"])
+                    self.update_running_values(keys=[f"{table_name}_{vd['column']}"], args=[vd['value']])
                 except:
                     redis_fail = True
 
         return {"response": 400} if redis_fail else {"response": 201}
-
-    def update_running_values(self, table_name, property_name, val):
-
-        def transaction_group(pipe):
-            old_vals = pipe.get(f"{table_name}_{property_name}")
-            new_vals = {}
-            if old_vals:
-                old_vals = json.loads(old_vals)
-                new_vals["count"] = old_vals["count"] + 1
-                new_vals["mean"] = old_vals["mean"] + (val - old_vals["mean"]) / new_vals["count"]
-                new_vals["inter"] = old_vals["inter"] + (val - old_vals["mean"]) * (val - new_vals["mean"])
-                new_vals["variance"] = new_vals["inter"] / old_vals["count"]
-            else:
-                new_vals = {"count": 1, "mean": val, "inter": 0, "variance": 0}
-            pipe.set(f"{table_name}_{property_name}", json.dumps(new_vals))
-
-        return self.r.transaction(transaction_group, f"{table_name}_{property_name}", watch_delay=0.1)
