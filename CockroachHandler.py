@@ -22,7 +22,8 @@ class CockroachHandler:
                 cursor_factory=psycopg2.extras.DictCursor)
             self.connection.set_session(autocommit=True)
             self.cur = self.connection.cursor()
-            self.r = redis.Redis(host=os.getenv('REDIT_HOST', 'localhost'), port=os.getenv('REDIS_PORT', 6379),
+            self.r = redis.Redis(host=os.getenv('REDIT_HOST', 'snf-843200.vm.okeanos.grnet.gr'),
+                                 port=os.getenv('REDIS_PORT', 6379),
                                  db=os.getenv('REDIS_DB', 0))
             lua_script = """
                 local old_vals = redis.call('get',KEYS[1])
@@ -30,13 +31,13 @@ class CockroachHandler:
                 if (old_vals) then
                     old_vals = cjson.decode(old_vals)
                     new_vals["count"] = old_vals['count'] + 1
-                    local delta = ARGV[1] - old_vals["mean"]
+                    local delta = tonumber(ARGV[1]) - old_vals["mean"]
                     new_vals["mean"] = old_vals["mean"] + delta / new_vals["count"]
-                    new_vals["M2"] = old_vals["M2"] + delta * (ARGV[1] - new_vals["mean"])
+                    new_vals["M2"] = old_vals["M2"] + delta * (tonumber(ARGV[1]) - new_vals["mean"])
                     new_vals["variance"] = new_vals["M2"] / new_vals["count"]
                 else
                     new_vals["count"] = 1
-                    new_vals["mean"] = ARGV[1]
+                    new_vals["mean"] = tonumber(ARGV[1])
                     new_vals["M2"] = 0
                     new_vals["variance"] = 0
                 end
@@ -94,13 +95,13 @@ class CockroachHandler:
                 column_declarator = column["name"] + ' ' + column["type"]
                 if "primary_key" in column:
                     column_declarator += " PRIMARY KEY"
-                self.cur.execute(f"ALTER TABLE IF EXISTS {table_name} ADD COLUMN IF NOT EXISTS {column_declarator}")
+                self.cur.execute("ALTER TABLE IF EXISTS %s ADD COLUMN IF NOT EXISTS %s" % (table_name, column_declarator))
         except Exception as e:
             return {"response": 400, "exception": e}
         return {"response": 201}
 
     def describe_table(self, table_name):
-        self.cur.execute(f"SELECT * FROM {table_name} LIMIT 1")
+        self.cur.execute("SELECT * FROM %s LIMIT 1" % table_name)
         return self.cur.fetchone()
 
     def write_data(self, table_name, data_instance):
@@ -123,7 +124,6 @@ class CockroachHandler:
         values_list = "("
         pattern = re.compile(r'\'')
         for value_descriptor in data_instance:
-
             column_list += '"' + value_descriptor["column"] + '"'
             if 'value' in value_descriptor:
                 if type(value_descriptor["value"]) is str:
@@ -137,7 +137,7 @@ class CockroachHandler:
         column_list = column_list[:-2] + ")"
         values_list = values_list[:-2] + ")"
 
-        query = f"INSERT INTO {table_name} {column_list} VALUES {values_list}"
+        query = "INSERT INTO %s %s VALUES %s" % (table_name, column_list, values_list)
 
         try:
             self.cur.execute(query)
@@ -146,10 +146,19 @@ class CockroachHandler:
 
         redis_fail = False
         for vd in data_instance:
-            if type(vd["value"]) is int or type(vd["value"]) is float:
-                try:
-                    self.update_running_values(keys=[f"{table_name}_{vd['column']}"], args=[vd['value']])
-                except:
-                    redis_fail = True
+            if 'value' in vd and not vd["column"].startswith("cenote"):
+                if type(vd["value"]) is int or type(vd["value"]) is float:
+                    try:
+                        with self.r.pipeline() as pipe:
+                            while True:
+                                try:
+                                    pipe.watch("%s_%s" % (table_name, vd["column"]))
+                                    self.update_running_values(keys=["%s_%s" % (table_name, vd['column'])], args=[vd['value']], client=pipe)
+                                    pipe.execute()
+                                    break
+                                except redis.WatchError:
+                                    continue
+                    except Exception as e:
+                        redis_fail = e
 
-        return {"response": 400} if redis_fail else {"response": 201}
+        return {"response": 400, "exception": redis_fail} if redis_fail else {"response": 201}
