@@ -23,8 +23,7 @@ class CockroachHandler:
             self.connection.set_session(autocommit=True)
             self.cur = self.connection.cursor()
             self.r = redis.Redis(host=os.getenv('REDIT_HOST', 'snf-843200.vm.okeanos.grnet.gr'),
-                                 port=os.getenv('REDIS_PORT', 6379),
-                                 db=os.getenv('REDIS_DB', 0))
+                                 port=os.getenv('REDIS_PORT', 6379), db=os.getenv('REDIS_DB', 0))
             lua_script = """
                 local old_vals = redis.call('get',KEYS[1])
                 local new_vals = {}
@@ -49,6 +48,7 @@ class CockroachHandler:
     def __del__(self):
         self.cur.close()
         self.connection.close()
+        self.r.connection_pool.disconnect()
 
     def create_table(self, table_name, column_specs):
         """
@@ -144,21 +144,22 @@ class CockroachHandler:
         except Exception as e:
             return {"response": 400, "exception": e}
 
-        redis_fail = False
+        redis_fail = None
         for vd in data_instance:
-            if 'value' in vd and not vd["column"].startswith("cenote"):
-                if type(vd["value"]) is int or type(vd["value"]) is float:
-                    try:
-                        with self.r.pipeline() as pipe:
-                            while True:
-                                try:
-                                    pipe.watch("%s_%s" % (table_name, vd["column"]))
-                                    self.update_running_values(keys=["%s_%s" % (table_name, vd['column'])], args=[vd['value']], client=pipe)
-                                    pipe.execute()
-                                    break
-                                except redis.WatchError:
-                                    continue
-                    except Exception as e:
-                        redis_fail = e
+            if 'value' in vd and not vd["column"].startswith("cenote") and (
+                    type(vd["value"]) is int or type(vd["value"]) is float):
+                try:
+                    with self.r.pipeline() as pipe:
+                        while True:
+                            try:
+                                pipe.watch("%s_%s" % (table_name, vd["column"]))
+                                self.update_running_values(keys=["%s_%s" % (table_name, vd['column'])], args=[vd['value']],
+                                                           client=pipe)
+                                pipe.execute()
+                                break
+                            except redis.WatchError:
+                                continue
+                except Exception as e:
+                    redis_fail = e
 
-        return {"response": 400, "exception": redis_fail} if redis_fail else {"response": 201}
+        return {"response": 400, "exception": repr(redis_fail)} if redis_fail else {"response": 201}
