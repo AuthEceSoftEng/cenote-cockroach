@@ -4,6 +4,9 @@ import re
 import psycopg2
 import psycopg2.extras
 import redis
+from dotenv import load_dotenv
+
+load_dotenv(override=True)
 
 
 class CockroachHandler:
@@ -17,13 +20,11 @@ class CockroachHandler:
         """
         try:
             # Connect to cluster
-            self.connection = psycopg2.connect(os.getenv(
-                'DATABASE_URL', 'postgres://cockroach@155.207.19.234:30591/cenote?sslmode=disable'),
-                cursor_factory=psycopg2.extras.DictCursor)
+            self.connection = psycopg2.connect(os.getenv('DATABASE_URL', ''), cursor_factory=psycopg2.extras.DictCursor)
             self.connection.set_session(autocommit=True)
             self.cur = self.connection.cursor()
-            self.r = redis.Redis(host=os.getenv('REDIT_HOST', 'snf-843200.vm.okeanos.grnet.gr'),
-                                 port=os.getenv('REDIS_PORT', 6379), db=os.getenv('REDIS_DB', 0))
+            self.r = redis.Redis(host=os.getenv('REDIS_HOST', '155.207.19.237'), port=os.getenv('REDIS_PORT', 6379),
+                                 db=os.getenv('REDIS_DB', 0), password=os.getenv('REDIS_PASSWORD', ''))
             lua_script = """
                 local old_vals = redis.call('get',KEYS[1])
                 local new_vals = {}
@@ -146,8 +147,7 @@ class CockroachHandler:
 
         redis_fail = None
         for vd in data_instance:
-            if 'value' in vd and not vd["column"].startswith("cenote") and (
-                    type(vd["value"]) is int or type(vd["value"]) is float):
+            if 'value' in vd and not vd["column"].startswith("cenote") and (type(vd["value"]) is int or type(vd["value"]) is float):
                 try:
                     with self.r.pipeline() as pipe:
                         while True:
