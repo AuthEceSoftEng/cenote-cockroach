@@ -26,20 +26,53 @@ class CockroachHandler:
             self.r = redis.Redis(host=os.getenv('REDIS_HOST', '155.207.19.237'), port=os.getenv('REDIS_PORT', 6379),
                                  db=os.getenv('REDIS_DB', 0), password=os.getenv('REDIS_PASSWORD', ''))
             lua_script = """
+                local k = 1/math.sqrt(0.05)
+                local val = tonumber(ARGV[1])
                 local old_vals = redis.call('get',KEYS[1])
                 local new_vals = {}
                 if (old_vals) then
                     old_vals = cjson.decode(old_vals)
-                    new_vals["count"] = old_vals['count'] + 1
-                    local delta = tonumber(ARGV[1]) - old_vals["mean"]
-                    new_vals["mean"] = old_vals["mean"] + delta / new_vals["count"]
-                    new_vals["M2"] = old_vals["M2"] + delta * (tonumber(ARGV[1]) - new_vals["mean"])
-                    new_vals["variance"] = new_vals["M2"] / new_vals["count"]
+                    
+                    new_vals["count_1"] = old_vals['count_1'] + 1
+                    local delta = val - old_vals["mean_1"]
+                    new_vals["mean_1"] = old_vals["mean_1"] + delta / new_vals["count_1"]
+                    new_vals["M2_1"] = old_vals["M2_1"] + delta * (val - new_vals["mean_1"])
+                    new_vals["variance_1"] = new_vals["M2_1"] / new_vals["count_1"]
+                    local std = math.sqrt(new_vals["variance_1"])
+                    new_vals["ODV1L"] = new_vals["mean_1"] - k * std
+                    new_vals["ODV1U"] = new_vals["mean_1"] + k * std
+                    
+                    if (val <=  new_vals["ODV1U"] and val >=  new_vals["ODV1L"]) then
+                        new_vals["count_2"] = old_vals['count_2'] + 1
+                        delta = val - old_vals["mean_2"]
+                        new_vals["mean_2"] = old_vals["mean_2"] + delta / new_vals["count_2"]
+                        new_vals["M2_2"] = old_vals["M2_2"] + delta * (val - new_vals["mean_2"])
+                        new_vals["variance_2"] = new_vals["M2_2"] / new_vals["count_2"]
+                        std = math.sqrt(new_vals["variance_2"])
+                        new_vals["ODV2L"] = new_vals["mean_2"] - k * std
+                        new_vals["ODV2U"] = new_vals["mean_2"] + k * std
+                    else
+                        new_vals["count_2"] = old_vals['count_2']
+                        new_vals["mean_2"] = old_vals["mean_2"]
+                        new_vals["M2_2"] = old_vals["M2_2"]
+                        new_vals["variance_2"] = old_vals["variance_2"]
+                        new_vals["ODV2L"] = old_vals["ODV2L"]
+                        new_vals["ODV2U"] = old_vals["ODV2U"]
+                    end
                 else
-                    new_vals["count"] = 1
-                    new_vals["mean"] = tonumber(ARGV[1])
-                    new_vals["M2"] = 0
-                    new_vals["variance"] = 0
+                    new_vals["count_1"] = 1
+                    new_vals["mean_1"] = val
+                    new_vals["M2_1"] = 0
+                    new_vals["variance_1"] = 0
+                    new_vals["ODV1L"] = val
+                    new_vals["ODV1U"] = val
+                    
+                    new_vals["count_2"] = 1
+                    new_vals["mean_2"] = val
+                    new_vals["M2_2"] = 0
+                    new_vals["variance_2"] = 0
+                    new_vals["ODV2L"] = val
+                    new_vals["ODV2U"] = val
                 end
                 redis.call('set', KEYS[1], cjson.encode(new_vals))"""
             self.update_running_values = self.r.register_script(lua_script)
