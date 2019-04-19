@@ -1,7 +1,7 @@
 import json
 from datetime import datetime
 
-from .CockroachHandler import CockroachHandler
+from CockroachHandler import CockroachHandler
 
 
 class DataWrite:
