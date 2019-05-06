@@ -107,27 +107,57 @@ class DataWrite:
 
         return data
 
-    def write_data(self, data_instance):
+    def write_data(self, data_instance_array):
 
-        if type(data_instance) is str:
-            data_instance = json.loads(data_instance)
-        table = self.get_table(data_instance["cenote"]["url"])
-        col_specs = self.create_column_specs(data_instance["data"], [])
+        if type(data_instance_array) is str:
+            data_instance_array = json.loads(data_instance_array)
+
+        # Check/create table based on first event
+        first_event = data_instance_array[0]
+        table = self.get_table(first_event["cenote"]["url"])
+        col_specs = self.create_column_specs(first_event["data"], [])
         res = self.create_table(table, col_specs)
-        if res["response"] == 201:
-            data = self.create_data_write_obj(data_instance["data"], [])
-            data = self.append_cenote_info(data_instance, data)
+        if res["response"] != 201:
+            return {"response": 400, "exception": "Can't create table"}
 
-            # Create missing columns in current schema
-            if self.ch.describe_table(table) is None:
-                current_schema_cols = [val["name"] for val in col_specs]
-            else:
-                current_schema_cols = list(self.ch.describe_table(table).keys())
-            cols_to_be_added = [val for val in col_specs if val['name'] not in current_schema_cols]
-            if len(cols_to_be_added) > 0:
-                self.ch.alter_table(table, cols_to_be_added)
-                current_schema_cols = list(self.ch.describe_table(table).keys())
+        # Create missing columns in current schema
+        if self.ch.describe_table(table) is None:
+            current_schema_cols = [val["name"] for val in col_specs]
+        else:
+            current_schema_cols = list(self.ch.describe_table(table).keys())
+        cols_to_be_added = [val for val in col_specs if val['name'] not in current_schema_cols]
+        if len(cols_to_be_added) > 0:
+            self.ch.alter_table(table, cols_to_be_added)
+            current_schema_cols = list(self.ch.describe_table(table).keys())
+        first_cols = current_schema_cols[:]
 
-            data = [val for val in data if val['column'] in current_schema_cols]
-            res = self.ch.write_data(table, data)
-        return res
+        # Write events
+        try:
+            for indx, data_instance in enumerate(data_instance_array):
+                # Basic check if data have same schema
+                if data_instance["cenote"]["url"] != first_event["cenote"]["url"]:
+                    raise Exception("Data don't belong to the same table!. Wrote only first {}".format(indx + 1))
+
+                data = self.create_data_write_obj(data_instance["data"], [])
+                this_cols = list(map(lambda x: x["column"], data))
+                if not (len(first_cols) == len(this_cols) and len(first_cols) == sum([1 for i, j in zip(first_cols, this_cols) if i == j])):
+
+                    # Create missing columns in current schema
+                    if self.ch.describe_table(table) is None:
+                        current_schema_cols = [val["name"] for val in col_specs]
+                    else:
+                        current_schema_cols = list(self.ch.describe_table(table).keys())
+                    cols_to_be_added = [val for val in col_specs if val['name'] not in current_schema_cols]
+                    if len(cols_to_be_added) > 0:
+                        self.ch.alter_table(table, cols_to_be_added)
+                        current_schema_cols = list(self.ch.describe_table(table).keys())
+                    first_cols = current_schema_cols[:]
+
+                data = self.append_cenote_info(data_instance, data)
+                data = [val for val in data if val['column'] in current_schema_cols]
+                res = self.ch.write_data(table, data)
+                if (res["response"] != 201):
+                    raise Exception(res["exception"])
+            return {"response": 201}
+        except Exception as e:
+            return {"response": 400, "exception": repr(e)}
