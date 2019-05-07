@@ -143,6 +143,7 @@ class DataWrite:
                 if not (len(first_cols) == len(this_cols) and len(first_cols) == sum([1 for i, j in zip(first_cols, this_cols) if i == j])):
 
                     # Create missing columns in current schema
+                    col_specs = self.create_column_specs(data_instance["data"], [])
                     if self.ch.describe_table(table) is None:
                         current_schema_cols = [val["name"] for val in col_specs]
                     else:
