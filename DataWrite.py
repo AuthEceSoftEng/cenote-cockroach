@@ -1,5 +1,4 @@
 import json
-from copy import deepcopy
 from datetime import datetime
 
 from CockroachHandler import CockroachHandler
@@ -130,27 +129,8 @@ class DataWrite:
         if len(cols_to_be_added) > 0:
             self.ch.alter_table(table, cols_to_be_added)
             current_schema_cols = list(self.ch.describe_table(table).keys())
-        first_cols = current_schema_cols[:]
 
         # Write events
-        def are_equal(arr1, arr2, n, m):
-            if n != m:
-                return False
-            arr1.sort()
-            arr2.sort()
-            for i in range(n):
-                if arr1[i] != arr2[i]:
-                    return False
-            return True
-
-        def is_subarray(initial, this_one, n, m):
-            if n <= m:
-                return False
-            for i in range(m):
-                if not this_one[i] in initial:
-                    return False
-            return True
-
         try:
             data_to_write = []
             for data_instance in data_instance_array:
@@ -160,11 +140,6 @@ class DataWrite:
 
                 data = self.create_data_write_obj(data_instance["data"], [])
                 data = self.append_cenote_info(data_instance, data)
-                this_cols = list(map(lambda x: x["column"], data))
-                if (not are_equal(deepcopy(first_cols), deepcopy(this_cols), len(first_cols),
-                                  len(this_cols))) and (not is_subarray(first_cols, this_cols, len(first_cols),
-                                                                        len(this_cols))):
-                    raise Exception("Data don't have the same attributes!")
                 data = [val for val in data if val['column'] in current_schema_cols]
                 data_to_write.append(data)
 

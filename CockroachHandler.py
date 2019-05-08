@@ -171,13 +171,16 @@ class CockroachHandler:
             values_list = "("
             for column_name in all_column_names:
                 value_descriptor = [x for x in data_instance if x["column"] == column_name]
-                if len(value_descriptor) > 0 and 'value' in value_descriptor[0]:
-                    if type(value_descriptor[0]["value"]) is str:
-                        values_list += "'" + pattern.sub("''", str(value_descriptor[0]["value"])) + "'"
+                if len(value_descriptor) > 0:
+                    if 'value' in value_descriptor[0]:
+                        if type(value_descriptor[0]["value"]) is str:
+                            values_list += "'" + pattern.sub("''", str(value_descriptor[0]["value"])) + "'"
+                        else:
+                            values_list += str(value_descriptor[0]["value"])
                     else:
-                        values_list += str(value_descriptor[0]["value"])
+                        values_list += value_descriptor[0]["built_in_function"]
                 else:
-                    values_list += value_descriptor[0]["built_in_function"]
+                    values_list += 'NULL'
                 values_list += ', '
             values_list = values_list[:-2] + ")"
             all_values_to_write.append(values_list)
