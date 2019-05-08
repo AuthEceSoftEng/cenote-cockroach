@@ -32,7 +32,7 @@ class CockroachHandler:
                 local new_vals = {}
                 if (old_vals) then
                     old_vals = cjson.decode(old_vals)
-                    
+
                     new_vals["count_1"] = old_vals['count_1'] + 1
                     local delta = val - old_vals["mean_1"]
                     new_vals["mean_1"] = old_vals["mean_1"] + delta / new_vals["count_1"]
@@ -41,7 +41,7 @@ class CockroachHandler:
                     local std = math.sqrt(new_vals["variance_1"])
                     new_vals["ODV1L"] = new_vals["mean_1"] - k * std
                     new_vals["ODV1U"] = new_vals["mean_1"] + k * std
-                    
+
                     if (val <=  new_vals["ODV1U"] and val >=  new_vals["ODV1L"]) then
                         new_vals["count_2"] = old_vals['count_2'] + 1
                         delta = val - old_vals["mean_2"]
@@ -66,7 +66,7 @@ class CockroachHandler:
                     new_vals["variance_1"] = 0
                     new_vals["ODV1L"] = val
                     new_vals["ODV1U"] = val
-                    
+
                     new_vals["count_2"] = 1
                     new_vals["mean_2"] = val
                     new_vals["M2_2"] = 0
@@ -105,7 +105,7 @@ class CockroachHandler:
             column_declarator += ', '
         column_declarator = column_declarator[:-2] + ")"
         try:
-            self.cur.execute("CREATE TABLE IF NOT EXISTS %s %s" % (table_name, column_declarator))
+            self.cur.execute(f"CREATE TABLE IF NOT EXISTS {table_name} {column_declarator}")
         except Exception as e:
             return {"response": 400, "exception": e}
 
@@ -129,21 +129,22 @@ class CockroachHandler:
                 column_declarator = column["name"] + ' ' + column["type"]
                 if "primary_key" in column:
                     column_declarator += " PRIMARY KEY"
-                self.cur.execute("ALTER TABLE IF EXISTS %s ADD COLUMN IF NOT EXISTS %s" % (table_name, column_declarator))
+                self.cur.execute(f"ALTER TABLE IF EXISTS {table_name} ADD COLUMN IF NOT EXISTS {column_declarator}")
         except Exception as e:
             return {"response": 400, "exception": e}
         return {"response": 201}
 
     def describe_table(self, table_name):
-        self.cur.execute("SELECT * FROM %s LIMIT 1" % table_name)
+        self.cur.execute(f"SELECT * FROM {table_name} LIMIT 1")
         return self.cur.fetchone()
 
-    def write_data(self, table_name, data_instance):
+    def write_data(self, table_name, data_instance_array):
         """
         Writes data into a certain table
 
         :param table_name: the name of the table
-        :param data_instance: An array of objects that contain the values to be inserted in each column
+        :param data_instance_array: array of data_instance
+               data_instance: An array of objects that contain the values to be inserted in each column
                 Example object:
                     e.g.:{
                             "column": "name_of_column",
@@ -154,45 +155,56 @@ class CockroachHandler:
                 1) value: Contains the raw value to be inserted into the table
                 2) built_in_function: Provides the name of the built-in function to be used for generating the value
         """
-        column_list = "("
-        values_list = "("
-        pattern = re.compile(r'\'')
-        for value_descriptor in data_instance:
-            column_list += '"' + value_descriptor["column"] + '"'
-            if 'value' in value_descriptor:
-                if type(value_descriptor["value"]) is str:
-                    values_list += "'" + pattern.sub("''", str(value_descriptor["value"])) + "'"
-                else:
-                    values_list += str(value_descriptor["value"])
-            else:
-                values_list += value_descriptor["built_in_function"]
-            column_list += ', '
-            values_list += ', '
-        column_list = column_list[:-2] + ")"
-        values_list = values_list[:-2] + ")"
 
-        query = "INSERT INTO %s %s VALUES %s" % (table_name, column_list, values_list)
+        # Get info from first event only
+        first_event = data_instance_array[0]
+        column_list = "("
+        pattern = re.compile(r'\'')
+        for value_descriptor in first_event:
+            column_list += '"' + value_descriptor["column"] + '", '
+        column_list = column_list[:-2] + ")"
+        all_values_to_write = []
+        all_column_names = [value_descriptor["column"] for value_descriptor in first_event]
+        redis_fail = None
+
+        for data_instance in data_instance_array:
+            values_list = "("
+            for column_name in all_column_names:
+                value_descriptor = [x for x in data_instance if x["column"] == column_name]
+                if len(value_descriptor) > 0 and 'value' in value_descriptor[0]:
+                    if type(value_descriptor[0]["value"]) is str:
+                        values_list += "'" + pattern.sub("''", str(value_descriptor[0]["value"])) + "'"
+                    else:
+                        values_list += str(value_descriptor[0]["value"])
+                else:
+                    values_list += value_descriptor[0]["built_in_function"]
+                values_list += ', '
+            values_list = values_list[:-2] + ")"
+            all_values_to_write.append(values_list)
+
+            redis_fail = None
+            for vd in data_instance:
+                if 'value' in vd and not vd["column"].startswith("cenote") and (
+                        type(vd["value"]) is int or type(vd["value"]) is float):
+                    try:
+                        with self.r.pipeline() as pipe:
+                            while True:
+                                try:
+                                    pipe.watch(f"{table_name}_{vd['column']}")
+                                    self.update_running_values(keys=[f"{table_name}_{vd['column']}"],
+                                                               args=[vd['value']],
+                                                               client=pipe)
+                                    pipe.execute()
+                                    break
+                                except redis.WatchError:
+                                    continue
+                    except Exception as e:
+                        redis_fail = e
+
+        query = f"INSERT INTO {table_name} {column_list} VALUES {','.join(map(str, all_values_to_write))}"
 
         try:
             self.cur.execute(query)
         except Exception as e:
             return {"response": 400, "exception": e}
-
-        redis_fail = None
-        for vd in data_instance:
-            if 'value' in vd and not vd["column"].startswith("cenote") and (type(vd["value"]) is int or type(vd["value"]) is float):
-                try:
-                    with self.r.pipeline() as pipe:
-                        while True:
-                            try:
-                                pipe.watch("%s_%s" % (table_name, vd["column"]))
-                                self.update_running_values(keys=["%s_%s" % (table_name, vd['column'])], args=[vd['value']],
-                                                           client=pipe)
-                                pipe.execute()
-                                break
-                            except redis.WatchError:
-                                continue
-                except Exception as e:
-                    redis_fail = e
-
         return {"response": 400, "exception": repr(redis_fail)} if redis_fail else {"response": 201}
