@@ -99,7 +99,7 @@ class CockroachHandler:
         """
         column_declarator = "("
         for column in column_specs:
-            column_declarator += column["name"] + ' ' + column["type"]
+            column_declarator += '"' + column["name"] + '" ' + column["type"]
             if "primary_key" in column:
                 column_declarator += " PRIMARY KEY"
             column_declarator += ', '
