@@ -106,6 +106,7 @@ class CockroachHandler:
         column_declarator = column_declarator[:-2] + ")"
         try:
             self.cur.execute(f"CREATE TABLE IF NOT EXISTS {table_name} {column_declarator}")
+            self.cur.execute(f"CREATE INDEX IF NOT EXISTS timestamp_index ON {table_name} (cenote$timestamp)")
         except Exception as e:
             return {"response": 400, "exception": e}
 
