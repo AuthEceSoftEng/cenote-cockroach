@@ -82,16 +82,30 @@ class CockroachHandler:
                 eeris_lua_script = """
                 local val = tonumber(ARGV[1])
                 local dt = tostring(ARGV[2])
-                local hour = tostring(ARGV[3])
+                local month = tostring(ARGV[3])
+                local hour = tostring(ARGV[4])
                 local old_vals = redis.call('get',KEYS[1])
                 local new_vals = {}
                 if (old_vals) then
                     old_vals = cjson.decode(old_vals)
                     new_vals = old_vals
-                    if (old_vals["count_" .. dt .. '_' .. hour]) then
-                        new_vals["count_" .. dt .. '_' .. hour] = old_vals["count_" .. dt .. '_' .. hour] + 1
-                        new_vals["sum_" .. dt .. '_' .. hour] = old_vals["sum_" .. dt .. '_' .. hour] + val
-                        new_vals["avg_" .. dt .. '_' .. hour] = new_vals["sum_" .. dt .. '_' .. hour] / new_vals["count_" .. dt .. '_' .. hour]
+                    if(old_vals["count_" .. month]) then
+                        new_vals["count_" .. month] = old_vals["count_" .. month] + 1
+                        new_vals["sum_" .. month] = old_vals["sum_" .. month] + val
+                        new_vals["avg_" .. month] = new_vals["sum_" .. month] / new_vals["count_" .. month]
+                        if(val < old_vals["min_" .. month]) then
+                            new_vals["min_" .. month] = val
+                        elseif(val > old_vals["max_" .. month]) then
+                            new_vals["max_" .. month] = val
+                        end
+                    else
+                        new_vals["count_" .. month] = 1
+                        new_vals["sum_" .. month] = val
+                        new_vals["avg_" .. month] = val
+                        new_vals["min_" .. month] = val
+                        new_vals["max_" .. month] = val
+                    end
+                    if(old_vals["count_" .. dt]) then
                         new_vals["count_" .. dt] = old_vals["count_" .. dt] + 1
                         new_vals["sum_" .. dt] = old_vals["sum_" .. dt] + val
                         new_vals["avg_" .. dt] = new_vals["sum_" .. dt] / new_vals["count_" .. dt]
@@ -101,38 +115,35 @@ class CockroachHandler:
                             new_vals["max_" .. dt] = val
                         end
                     else
-                        if(old_vals["count_" .. dt]) then
-                            new_vals["count_" .. dt .. '_' .. hour] = 1
-                            new_vals["sum_" .. dt .. '_' .. hour] = val
-                            new_vals["avg_" .. dt .. '_' .. hour] = val
-                            new_vals["count_" .. dt] = old_vals["count_" .. dt] + 1
-                            new_vals["sum_" .. dt] = old_vals["sum_" .. dt] + val
-                            new_vals["avg_" .. dt] = new_vals["sum_" .. dt] / new_vals["count_" .. dt]
-                            if(val < old_vals["min_" .. dt]) then
-                                new_vals["min_" .. dt] = val
-                            elseif(val > old_vals["max_" .. dt]) then
-                                new_vals["max_" .. dt] = val
-                            end
-                        else
-                            new_vals["count_" .. dt .. '_' .. hour] = 1
-                            new_vals["count_" .. dt] = 1
-                            new_vals["sum_" .. dt .. '_' .. hour] = val
-                            new_vals["sum_" .. dt] = val
-                            new_vals["avg_" .. dt .. '_' .. hour] = val                            
-                            new_vals["avg_" .. dt] = val
-                            new_vals["min_" .. dt] = val
-                            new_vals["max_" .. dt] = val
-                        end
+                        new_vals["count_" .. dt] = 1
+                        new_vals["sum_" .. dt] = val
+                        new_vals["avg_" .. dt] = val
+                        new_vals["min_" .. dt] = val
+                        new_vals["max_" .. dt] = val
+                    end
+                    if (old_vals["count_" .. dt .. '_' .. hour]) then
+                        new_vals["count_" .. dt .. '_' .. hour] = old_vals["count_" .. dt .. '_' .. hour] + 1
+                        new_vals["sum_" .. dt .. '_' .. hour] = old_vals["sum_" .. dt .. '_' .. hour] + val
+                        new_vals["avg_" .. dt .. '_' .. hour] = new_vals["sum_" .. dt .. '_' .. hour] / new_vals["count_" .. dt .. '_' .. hour]
+                    else
+                        new_vals["count_" .. dt .. '_' .. hour] = 1
+                        new_vals["sum_" .. dt .. '_' .. hour] = val
+                        new_vals["avg_" .. dt .. '_' .. hour] = val
                     end
                 else
                     new_vals["count_" .. dt .. '_' .. hour] = 1
-                    new_vals["count_" .. dt] = 1
                     new_vals["sum_" .. dt .. '_' .. hour] = val
+                    new_vals["avg_" .. dt .. '_' .. hour] = val
+                    new_vals["count_" .. dt] = 1
                     new_vals["sum_" .. dt] = val
-                    new_vals["avg_" .. dt .. '_' .. hour] = val                            
                     new_vals["avg_" .. dt] = val
                     new_vals["min_" .. dt] = val
                     new_vals["max_" .. dt] = val
+                    new_vals["count_" .. month] = 1
+                    new_vals["sum_" .. month] = val
+                    new_vals["avg_" .. month] = val
+                    new_vals["min_" .. month] = val
+                    new_vals["max_" .. month] = val 
                 end
                 redis.call('set', KEYS[1], cjson.encode(new_vals))"""
                 self.update_eeris_historical_average_values = self.r.register_script(
@@ -281,6 +292,7 @@ class CockroachHandler:
                     if vd["column"] == 'cenote$timestamp':
                         split = vd['value'].split(':')
                         date = split[0].split('T')[0]
+                        month = date[:7]
                         hour = split[0].split('T')[1]
                     elif vd["column"] == 'installationid':
                         installationId = vd['value']
@@ -299,7 +311,8 @@ class CockroachHandler:
                                             self.update_eeris_historical_average_values(
                                                 keys=[
                                                     f"{table_name}_{installationId}_{vd['column']}_hist"],
-                                                args=[vd['value'], date, hour],
+                                                args=[vd['value'],
+                                                      date, month, hour],
                                                 client=pipe)
                                             pipe.execute()
                                             break
