@@ -286,7 +286,7 @@ class CockroachHandler:
                         redis_fail = e
 
             # eeris historical averages
-            if(os.getenv('APP_NAME') == 'eeris'):
+            if(os.getenv('APP_NAME') == 'eeris' and 'installations' in table_name):
                 installationId = ''
                 for vd in data_instance:
                     if vd["column"] == 'cenote$timestamp':
