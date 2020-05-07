@@ -20,7 +20,8 @@ class CockroachHandler:
         """
         try:
             # Connect to cluster
-            self.connection = psycopg2.connect(os.getenv('DATABASE_URL', ''), cursor_factory=psycopg2.extras.DictCursor)
+            self.connection = psycopg2.connect(
+                os.getenv('DATABASE_URL', ''), cursor_factory=psycopg2.extras.DictCursor)
             self.connection.set_session(autocommit=True)
             self.cur = self.connection.cursor()
             self.r = redis.Redis(host=os.getenv('REDIS_HOST', '155.207.19.237'), port=os.getenv('REDIS_PORT', 6379),
@@ -76,6 +77,77 @@ class CockroachHandler:
                 end
                 redis.call('set', KEYS[1], cjson.encode(new_vals))"""
             self.update_running_values = self.r.register_script(lua_script)
+            # eeRIS Lua script
+            if(os.getenv("APP_NAME") == "eeris"):
+                eeris_lua_script = """
+                local val = tonumber(ARGV[1])
+                local dt = tostring(ARGV[2])
+                local month = tostring(ARGV[3])
+                local hour = tostring(ARGV[4])
+                local old_vals = redis.call('get',KEYS[1])
+                local new_vals = {}
+                if (old_vals) then
+                    old_vals = cjson.decode(old_vals)
+                    new_vals = old_vals
+                    if(old_vals["count_" .. month]) then
+                        new_vals["count_" .. month] = old_vals["count_" .. month] + 1
+                        new_vals["sum_" .. month] = old_vals["sum_" .. month] + val
+                        new_vals["avg_" .. month] = new_vals["sum_" .. month] / new_vals["count_" .. month]
+                        if(val < old_vals["min_" .. month]) then
+                            new_vals["min_" .. month] = val
+                        elseif(val > old_vals["max_" .. month]) then
+                            new_vals["max_" .. month] = val
+                        end
+                    else
+                        new_vals["count_" .. month] = 1
+                        new_vals["sum_" .. month] = val
+                        new_vals["avg_" .. month] = val
+                        new_vals["min_" .. month] = val
+                        new_vals["max_" .. month] = val
+                    end
+                    if(old_vals["count_" .. dt]) then
+                        new_vals["count_" .. dt] = old_vals["count_" .. dt] + 1
+                        new_vals["sum_" .. dt] = old_vals["sum_" .. dt] + val
+                        new_vals["avg_" .. dt] = new_vals["sum_" .. dt] / new_vals["count_" .. dt]
+                        if(val < old_vals["min_" .. dt]) then
+                            new_vals["min_" .. dt] = val
+                        elseif(val > old_vals["max_" .. dt]) then
+                            new_vals["max_" .. dt] = val
+                        end
+                    else
+                        new_vals["count_" .. dt] = 1
+                        new_vals["sum_" .. dt] = val
+                        new_vals["avg_" .. dt] = val
+                        new_vals["min_" .. dt] = val
+                        new_vals["max_" .. dt] = val
+                    end
+                    if (old_vals["count_" .. dt .. '_' .. hour]) then
+                        new_vals["count_" .. dt .. '_' .. hour] = old_vals["count_" .. dt .. '_' .. hour] + 1
+                        new_vals["sum_" .. dt .. '_' .. hour] = old_vals["sum_" .. dt .. '_' .. hour] + val
+                        new_vals["avg_" .. dt .. '_' .. hour] = new_vals["sum_" .. dt .. '_' .. hour] / new_vals["count_" .. dt .. '_' .. hour]
+                    else
+                        new_vals["count_" .. dt .. '_' .. hour] = 1
+                        new_vals["sum_" .. dt .. '_' .. hour] = val
+                        new_vals["avg_" .. dt .. '_' .. hour] = val
+                    end
+                else
+                    new_vals["count_" .. dt .. '_' .. hour] = 1
+                    new_vals["sum_" .. dt .. '_' .. hour] = val
+                    new_vals["avg_" .. dt .. '_' .. hour] = val
+                    new_vals["count_" .. dt] = 1
+                    new_vals["sum_" .. dt] = val
+                    new_vals["avg_" .. dt] = val
+                    new_vals["min_" .. dt] = val
+                    new_vals["max_" .. dt] = val
+                    new_vals["count_" .. month] = 1
+                    new_vals["sum_" .. month] = val
+                    new_vals["avg_" .. month] = val
+                    new_vals["min_" .. month] = val
+                    new_vals["max_" .. month] = val 
+                end
+                redis.call('set', KEYS[1], cjson.encode(new_vals))"""
+                self.update_eeris_historical_average_values = self.r.register_script(
+                    eeris_lua_script)
         except Exception as e:
             raise e
 
@@ -105,8 +177,10 @@ class CockroachHandler:
             column_declarator += ', '
         column_declarator = column_declarator[:-2] + ")"
         try:
-            self.cur.execute(f"CREATE TABLE IF NOT EXISTS {table_name} {column_declarator}")
-            self.cur.execute(f"CREATE INDEX IF NOT EXISTS timestamp_index ON {table_name} (cenote$timestamp)")
+            self.cur.execute(
+                f"CREATE TABLE IF NOT EXISTS {table_name} {column_declarator}")
+            self.cur.execute(
+                f"CREATE INDEX IF NOT EXISTS timestamp_index ON {table_name} (cenote$timestamp)")
         except Exception as e:
             return {"response": 400, "exception": e}
 
@@ -130,7 +204,8 @@ class CockroachHandler:
                 column_declarator = column["name"] + ' ' + column["type"]
                 if "primary_key" in column:
                     column_declarator += " PRIMARY KEY"
-                self.cur.execute(f"ALTER TABLE IF EXISTS {table_name} ADD COLUMN IF NOT EXISTS {column_declarator}")
+                self.cur.execute(
+                    f"ALTER TABLE IF EXISTS {table_name} ADD COLUMN IF NOT EXISTS {column_declarator}")
         except Exception as e:
             return {"response": 400, "exception": e}
         return {"response": 201}
@@ -165,17 +240,21 @@ class CockroachHandler:
             column_list += '"' + value_descriptor["column"] + '", '
         column_list = column_list[:-2] + ")"
         all_values_to_write = []
-        all_column_names = [value_descriptor["column"] for value_descriptor in first_event]
+        all_column_names = [value_descriptor["column"]
+                            for value_descriptor in first_event]
         redis_fail = None
 
         for data_instance in data_instance_array:
             values_list = "("
             for column_name in all_column_names:
-                value_descriptor = [x for x in data_instance if x["column"] == column_name]
+                value_descriptor = [
+                    x for x in data_instance if x["column"] == column_name]
                 if len(value_descriptor) > 0:
                     if 'value' in value_descriptor[0]:
                         if type(value_descriptor[0]["value"]) is str:
-                            values_list += "'" + pattern.sub("''", str(value_descriptor[0]["value"])) + "'"
+                            values_list += "'" + \
+                                pattern.sub(
+                                    "''", str(value_descriptor[0]["value"])) + "'"
                         else:
                             values_list += str(value_descriptor[0]["value"])
                     else:
@@ -196,7 +275,8 @@ class CockroachHandler:
                                 try:
                                     pipe.watch(f"{table_name}_{vd['column']}")
                                     self.update_running_values(keys=[f"{table_name}_{vd['column']}"],
-                                                               args=[vd['value']],
+                                                               args=[
+                                                                   vd['value']],
                                                                client=pipe)
                                     pipe.execute()
                                     break
@@ -204,6 +284,42 @@ class CockroachHandler:
                                     continue
                     except Exception as e:
                         redis_fail = e
+
+            # eeris historical averages
+            if(os.getenv('APP_NAME') == 'eeris' and 'installations' in table_name):
+                installationId = ''
+                for vd in data_instance:
+                    if vd["column"] == 'cenote$timestamp':
+                        split = vd['value'].split(':')
+                        date = split[0].split('T')[0]
+                        month = date[:7]
+                        hour = split[0].split('T')[1]
+                    elif vd["column"] == 'installationid':
+                        installationId = vd['value']
+
+                if installationId:
+                    redis_fail = None
+                    for vd in data_instance:
+                        if 'value' in vd and not vd["column"].startswith("cenote") and (
+                                type(vd["value"]) is int or type(vd["value"]) is float):
+                            try:
+                                with self.r.pipeline() as pipe:
+                                    while True:
+                                        try:
+                                            pipe.watch(
+                                                f"{table_name}_{installationId}_{vd['column']}_hist")
+                                            self.update_eeris_historical_average_values(
+                                                keys=[
+                                                    f"{table_name}_{installationId}_{vd['column']}_hist"],
+                                                args=[vd['value'],
+                                                      date, month, hour],
+                                                client=pipe)
+                                            pipe.execute()
+                                            break
+                                        except redis.WatchError:
+                                            continue
+                            except Exception as e:
+                                redis_fail = e
 
         query = f"INSERT INTO {table_name} {column_list} VALUES {','.join(map(str, all_values_to_write))}"
 
