@@ -286,40 +286,36 @@ class CockroachHandler:
                         redis_fail = e
 
             # eeris historical averages
-            if(os.getenv('APP_NAME') == 'eeris' and ('installations' in table_name or 'meazon' in table_name)):
-                installationId = ''
+            if(os.getenv('APP_NAME') == 'eeris' and 'installations' in table_name):
                 for vd in data_instance:
                     if vd["column"] == 'cenote$timestamp':
                         split = vd['value'].split(':')
                         date = split[0].split('T')[0]
                         month = date[:7]
                         hour = split[0].split('T')[1]
-                    elif vd["column"] == 'installationid':
-                        installationId = vd['value']
 
-                if installationId:
-                    redis_fail = None
-                    for vd in data_instance:
-                        if 'value' in vd and not vd["column"].startswith("cenote") and (
-                                type(vd["value"]) is int or type(vd["value"]) is float):
-                            try:
-                                with self.r.pipeline() as pipe:
-                                    while True:
-                                        try:
-                                            pipe.watch(
-                                                f"{table_name}_{installationId}_{vd['column']}_hist")
-                                            self.update_eeris_historical_average_values(
-                                                keys=[
-                                                    f"{table_name}_{installationId}_{vd['column']}_hist"],
-                                                args=[vd['value'],
-                                                      date, month, hour],
-                                                client=pipe)
-                                            pipe.execute()
-                                            break
-                                        except redis.WatchError:
-                                            continue
-                            except Exception as e:
-                                redis_fail = e
+                redis_fail = None
+                for vd in data_instance:
+                    if 'value' in vd and not vd["column"].startswith("cenote") and (
+                            type(vd["value"]) is int or type(vd["value"]) is float):
+                        try:
+                            with self.r.pipeline() as pipe:
+                                while True:
+                                    try:
+                                        pipe.watch(
+                                            f"{table_name}_{vd['column']}_hist")
+                                        self.update_eeris_historical_average_values(
+                                            keys=[
+                                                f"{table_name}_{vd['column']}_hist"],
+                                            args=[vd['value'],
+                                                  date, month, hour],
+                                            client=pipe)
+                                        pipe.execute()
+                                        break
+                                    except redis.WatchError:
+                                        continue
+                        except Exception as e:
+                            redis_fail = e
 
         query = f"INSERT INTO {table_name} {column_list} VALUES {','.join(map(str, all_values_to_write))}"
 
