@@ -99,4 +99,5 @@ limit.txt
 # Development stuff
 scriptaki.py
 
-
+# VS Code
+.vscode
