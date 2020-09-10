@@ -133,17 +133,22 @@ class DataWrite:
         # Write events
         try:
             data_to_write = []
+            redis_flag = False
             for data_instance in data_instance_array:
                 # Basic check if data have same schema
                 if data_instance["cenote"]["url"] != first_event["cenote"]["url"]:
                     raise Exception("Data don't belong to the same table!")
+
+                # Check for redisHist flag
+                if "redisHist" in data_instance:
+                    redis_flag = True
 
                 data = self.create_data_write_obj(data_instance["data"], [])
                 data = self.append_cenote_info(data_instance, data)
                 data = [val for val in data if val['column'] in current_schema_cols]
                 data_to_write.append(data)
 
-            res = self.ch.write_data(table, data_to_write)
+            res = self.ch.write_data(table, data_to_write, redis_flag)
             if res["response"] != 201:
                 raise Exception(res["exception"])
             return {"response": 201}

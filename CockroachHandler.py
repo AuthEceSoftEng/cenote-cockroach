@@ -29,10 +29,8 @@ class CockroachHandler:
             self.r = redis.Redis(host=os.getenv('REDIS_HOST', '155.207.19.237'), port=os.getenv('REDIS_PORT', 6379),
                                  db=os.getenv('REDIS_DB', 0), password=os.getenv('REDIS_PASSWORD', ''))
             self.update_running_values = self.r.register_script(lua_1)
-            # eeRIS Lua script
-            if(os.getenv("APP_NAME") == "eeris"):
-                self.update_eeris_historical_average_values = self.r.register_script(
-                    lua_2)
+            # Historical averages Lua script
+            self.update_historical_average_values = self.r.register_script(lua_2)
         except Exception as e:
             raise e
 
@@ -99,7 +97,7 @@ class CockroachHandler:
         self.cur.execute(f"SELECT * FROM {table_name} LIMIT 1")
         return self.cur.fetchone()
 
-    def write_data(self, table_name, data_instance_array):
+    def write_data(self, table_name, data_instance_array, redis_hist_flag):
         """
         Writes data into a certain table
 
@@ -115,8 +113,8 @@ class CockroachHandler:
             The data registration process supports two types:
                 1) value: Contains the raw value to be inserted into the table
                 2) built_in_function: Provides the name of the built-in function to be used for generating the value
+        :param redis_hist_flag: a flag that dictates whether historical averages will be cached in redis
         """
-
         # Get info from first event only
         first_event = data_instance_array[0]
         column_list = "("
@@ -170,8 +168,7 @@ class CockroachHandler:
                     except Exception as e:
                         redis_fail = e
 
-            # eeris historical averages
-            if(os.getenv('APP_NAME') == 'eeris' and 'installations' in table_name):
+            if redis_hist_flag:
                 for vd in data_instance:
                     if vd["column"] == 'cenote$timestamp':
                         split = vd['value'].split(':')
@@ -189,7 +186,7 @@ class CockroachHandler:
                                     try:
                                         pipe.watch(
                                             f"{table_name}_{vd['column']}_hist")
-                                        self.update_eeris_historical_average_values(
+                                        self.update_historical_average_values(
                                             keys=[
                                                 f"{table_name}_{vd['column']}_hist"],
                                             args=[vd['value'],
