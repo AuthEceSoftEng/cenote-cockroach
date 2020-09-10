@@ -18,8 +18,8 @@ services:
     environment:
       - COCKROACH_HOST=crdb:26257
       - COCKROACH_INSECURE=true
-      - DATABASE_NAME=cenote
       - COCKROACH_USER=cockroach
+      - DATABASE_NAME=cenote
       - DATABASE_USER=cockroach
       - DATABASE_PASSWORD='test12345'
     depends_on:
