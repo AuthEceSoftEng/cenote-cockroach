@@ -20,5 +20,6 @@ services:
       - COCKROACH_INSECURE=true
       - DATABASE_NAME=cenote
       - COCKROACH_USER=cockroach
+      - DATABASE_USER=cockroach
     depends_on:
       - crdb
