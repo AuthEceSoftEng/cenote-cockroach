@@ -64,58 +64,31 @@ lua_2 = """
         if(old_vals["count_" .. month]) then
             new_vals["count_" .. month] = old_vals["count_" .. month] + 1
             new_vals["sum_" .. month] = old_vals["sum_" .. month] + val
-            new_vals["avg_" .. month] = new_vals["sum_" .. month] / new_vals["count_" .. month]
-            if(val < old_vals["min_" .. month]) then
-                new_vals["min_" .. month] = val
-            elseif(val > old_vals["max_" .. month]) then
-                new_vals["max_" .. month] = val
-            end
         else
             new_vals["count_" .. month] = 1
             new_vals["sum_" .. month] = val
-            new_vals["avg_" .. month] = val
-            new_vals["min_" .. month] = val
-            new_vals["max_" .. month] = val
         end
         if(old_vals["count_" .. dt]) then
             new_vals["count_" .. dt] = old_vals["count_" .. dt] + 1
             new_vals["sum_" .. dt] = old_vals["sum_" .. dt] + val
-            new_vals["avg_" .. dt] = new_vals["sum_" .. dt] / new_vals["count_" .. dt]
-            if(val < old_vals["min_" .. dt]) then
-                new_vals["min_" .. dt] = val
-            elseif(val > old_vals["max_" .. dt]) then
-                new_vals["max_" .. dt] = val
-            end
         else
             new_vals["count_" .. dt] = 1
             new_vals["sum_" .. dt] = val
-            new_vals["avg_" .. dt] = val
-            new_vals["min_" .. dt] = val
-            new_vals["max_" .. dt] = val
         end
         if (old_vals["count_" .. dt .. '_' .. hour]) then
             new_vals["count_" .. dt .. '_' .. hour] = old_vals["count_" .. dt .. '_' .. hour] + 1
             new_vals["sum_" .. dt .. '_' .. hour] = old_vals["sum_" .. dt .. '_' .. hour] + val
-            new_vals["avg_" .. dt .. '_' .. hour] = new_vals["sum_" .. dt .. '_' .. hour] / new_vals["count_" .. dt .. '_' .. hour]
         else
             new_vals["count_" .. dt .. '_' .. hour] = 1
             new_vals["sum_" .. dt .. '_' .. hour] = val
-            new_vals["avg_" .. dt .. '_' .. hour] = val
         end
     else
         new_vals["count_" .. dt .. '_' .. hour] = 1
         new_vals["sum_" .. dt .. '_' .. hour] = val
-        new_vals["avg_" .. dt .. '_' .. hour] = val
         new_vals["count_" .. dt] = 1
         new_vals["sum_" .. dt] = val
-        new_vals["avg_" .. dt] = val
-        new_vals["min_" .. dt] = val
-        new_vals["max_" .. dt] = val
         new_vals["count_" .. month] = 1
         new_vals["sum_" .. month] = val
-        new_vals["avg_" .. month] = val
-        new_vals["min_" .. month] = val
-        new_vals["max_" .. month] = val 
     end
     redis.call('set', KEYS[1], cjson.encode(new_vals))
 """
