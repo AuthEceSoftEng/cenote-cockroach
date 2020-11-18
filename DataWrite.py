@@ -140,7 +140,7 @@ class DataWrite:
                     raise Exception("Data don't belong to the same table!")
 
                 # Check for redisHist flag
-                if "redisHist" in data_instance:
+                if "redisHist" in data_instance["cenote"]:
                     redis_flag = True
 
                 data = self.create_data_write_obj(data_instance["data"], [])
@@ -148,6 +148,7 @@ class DataWrite:
                 data = [val for val in data if val['column'] in current_schema_cols]
                 data_to_write.append(data)
 
+            print("redis_flag:", redis_flag)
             res = self.ch.write_data(table, data_to_write, redis_flag)
             if res["response"] != 201:
                 raise Exception(res["exception"])

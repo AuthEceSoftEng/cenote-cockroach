@@ -42,7 +42,7 @@ lua_1 = """
         new_vals["ODV1U"] = val
 
         new_vals["count_2"] = 1
-         new_vals["mean_2"] = val
+        new_vals["mean_2"] = val
         new_vals["M2_2"] = 0
         new_vals["variance_2"] = 0
         new_vals["ODV2L"] = val
@@ -61,13 +61,6 @@ lua_2 = """
     if (old_vals) then
         old_vals = cjson.decode(old_vals)
         new_vals = old_vals
-        if(old_vals["count_" .. month]) then
-            new_vals["count_" .. month] = old_vals["count_" .. month] + 1
-            new_vals["sum_" .. month] = old_vals["sum_" .. month] + val
-        else
-            new_vals["count_" .. month] = 1
-            new_vals["sum_" .. month] = val
-        end
         if(old_vals["count_" .. dt]) then
             new_vals["count_" .. dt] = old_vals["count_" .. dt] + 1
             new_vals["sum_" .. dt] = old_vals["sum_" .. dt] + val
@@ -87,8 +80,6 @@ lua_2 = """
         new_vals["sum_" .. dt .. '_' .. hour] = val
         new_vals["count_" .. dt] = 1
         new_vals["sum_" .. dt] = val
-        new_vals["count_" .. month] = 1
-        new_vals["sum_" .. month] = val
     end
     redis.call('set', KEYS[1], cjson.encode(new_vals))
 """
