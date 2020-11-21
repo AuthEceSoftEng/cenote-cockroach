@@ -10,7 +10,6 @@ from lua_scripts import lua_1, lua_2
 
 load_dotenv()
 
-
 class CockroachHandler:
     """
     This class implements a handler for the CockroachDB database.
@@ -30,7 +29,7 @@ class CockroachHandler:
                                  db=os.getenv('REDIS_DB', 0), password=os.getenv('REDIS_PASSWORD', ''))
             self.update_running_values = self.r.register_script(lua_1)
             # Historical aggregates Lua script
-            self.update_historical_average_values = self.r.register_script(lua_2)
+            self.update_historical_aggregates = self.r.register_script(lua_2)
         except Exception as e:
             raise e
 
@@ -97,7 +96,7 @@ class CockroachHandler:
         self.cur.execute(f"SELECT * FROM {table_name} LIMIT 1")
         return self.cur.fetchone()
 
-    def write_data(self, table_name, data_instance_array, redis_hist_flag):
+    def write_data(self, table_name, data_instance_array):
         """
         Writes data into a certain table
 
@@ -113,8 +112,8 @@ class CockroachHandler:
             The data registration process supports two types:
                 1) value: Contains the raw value to be inserted into the table
                 2) built_in_function: Provides the name of the built-in function to be used for generating the value
-        :param redis_hist_flag: a flag that dictates whether historical aggregates will be cached in redis
         """
+
         # Get info from first event only
         first_event = data_instance_array[0]
         column_list = "("
@@ -168,7 +167,8 @@ class CockroachHandler:
                     except Exception as e:
                         redis_fail = e
 
-            if redis_hist_flag:
+            # Historical aggregates
+            if('installations' in table_name):
                 for vd in data_instance:
                     if vd["column"] == 'cenote$timestamp':
                         split = vd['value'].split(':')
@@ -178,15 +178,14 @@ class CockroachHandler:
 
                 redis_fail = None
                 for vd in data_instance:
-                    if 'value' in vd and not vd["column"].startswith("cenote") and (
-                            type(vd["value"]) is int or type(vd["value"]) is float):
+                    if 'value' in vd and vd["column"] == "active" and (type(vd["value"]) is int or type(vd["value"]) is float):
                         try:
                             with self.r.pipeline() as pipe:
                                 while True:
                                     try:
                                         pipe.watch(
                                             f"{table_name}_{vd['column']}_hist")
-                                        self.update_historical_average_values(
+                                        self.update_historical_aggregates(
                                             keys=[
                                                 f"{table_name}_{vd['column']}_hist"],
                                             args=[vd['value'],
