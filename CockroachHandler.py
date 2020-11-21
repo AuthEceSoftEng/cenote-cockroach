@@ -6,8 +6,9 @@ import psycopg2.extras
 import redis
 from dotenv import load_dotenv
 
-load_dotenv()
+from lua_scripts import lua_1, lua_2
 
+load_dotenv()
 
 class CockroachHandler:
     """
@@ -26,128 +27,9 @@ class CockroachHandler:
             self.cur = self.connection.cursor()
             self.r = redis.Redis(host=os.getenv('REDIS_HOST', '155.207.19.237'), port=os.getenv('REDIS_PORT', 6379),
                                  db=os.getenv('REDIS_DB', 0), password=os.getenv('REDIS_PASSWORD', ''))
-            lua_script = """
-                local k = 1/math.sqrt(0.05)
-                local val = tonumber(ARGV[1])
-                local old_vals = redis.call('get',KEYS[1])
-                local new_vals = {}
-                if (old_vals) then
-                    old_vals = cjson.decode(old_vals)
-
-                    new_vals["count_1"] = old_vals['count_1'] + 1
-                    local delta = val - old_vals["mean_1"]
-                    new_vals["mean_1"] = old_vals["mean_1"] + delta / new_vals["count_1"]
-                    new_vals["M2_1"] = old_vals["M2_1"] + delta * (val - new_vals["mean_1"])
-                    new_vals["variance_1"] = new_vals["M2_1"] / new_vals["count_1"]
-                    local std = math.sqrt(new_vals["variance_1"])
-                    new_vals["ODV1L"] = new_vals["mean_1"] - k * std
-                    new_vals["ODV1U"] = new_vals["mean_1"] + k * std
-
-                    if (val <=  new_vals["ODV1U"] and val >=  new_vals["ODV1L"]) then
-                        new_vals["count_2"] = old_vals['count_2'] + 1
-                        delta = val - old_vals["mean_2"]
-                        new_vals["mean_2"] = old_vals["mean_2"] + delta / new_vals["count_2"]
-                        new_vals["M2_2"] = old_vals["M2_2"] + delta * (val - new_vals["mean_2"])
-                        new_vals["variance_2"] = new_vals["M2_2"] / new_vals["count_2"]
-                        std = math.sqrt(new_vals["variance_2"])
-                        new_vals["ODV2L"] = new_vals["mean_2"] - k * std
-                        new_vals["ODV2U"] = new_vals["mean_2"] + k * std
-                    else
-                        new_vals["count_2"] = old_vals['count_2']
-                        new_vals["mean_2"] = old_vals["mean_2"]
-                        new_vals["M2_2"] = old_vals["M2_2"]
-                        new_vals["variance_2"] = old_vals["variance_2"]
-                        new_vals["ODV2L"] = old_vals["ODV2L"]
-                        new_vals["ODV2U"] = old_vals["ODV2U"]
-                    end
-                else
-                    new_vals["count_1"] = 1
-                    new_vals["mean_1"] = val
-                    new_vals["M2_1"] = 0
-                    new_vals["variance_1"] = 0
-                    new_vals["ODV1L"] = val
-                    new_vals["ODV1U"] = val
-
-                    new_vals["count_2"] = 1
-                    new_vals["mean_2"] = val
-                    new_vals["M2_2"] = 0
-                    new_vals["variance_2"] = 0
-                    new_vals["ODV2L"] = val
-                    new_vals["ODV2U"] = val
-                end
-                redis.call('set', KEYS[1], cjson.encode(new_vals))"""
-            self.update_running_values = self.r.register_script(lua_script)
-            # eeRIS Lua script
-            if(os.getenv("APP_NAME") == "eeris"):
-                eeris_lua_script = """
-                local val = tonumber(ARGV[1])
-                local dt = tostring(ARGV[2])
-                local month = tostring(ARGV[3])
-                local hour = tostring(ARGV[4])
-                local old_vals = redis.call('get',KEYS[1])
-                local new_vals = {}
-                if (old_vals) then
-                    old_vals = cjson.decode(old_vals)
-                    new_vals = old_vals
-                    if(old_vals["count_" .. month]) then
-                        new_vals["count_" .. month] = old_vals["count_" .. month] + 1
-                        new_vals["sum_" .. month] = old_vals["sum_" .. month] + val
-                        new_vals["avg_" .. month] = new_vals["sum_" .. month] / new_vals["count_" .. month]
-                        if(val < old_vals["min_" .. month]) then
-                            new_vals["min_" .. month] = val
-                        elseif(val > old_vals["max_" .. month]) then
-                            new_vals["max_" .. month] = val
-                        end
-                    else
-                        new_vals["count_" .. month] = 1
-                        new_vals["sum_" .. month] = val
-                        new_vals["avg_" .. month] = val
-                        new_vals["min_" .. month] = val
-                        new_vals["max_" .. month] = val
-                    end
-                    if(old_vals["count_" .. dt]) then
-                        new_vals["count_" .. dt] = old_vals["count_" .. dt] + 1
-                        new_vals["sum_" .. dt] = old_vals["sum_" .. dt] + val
-                        new_vals["avg_" .. dt] = new_vals["sum_" .. dt] / new_vals["count_" .. dt]
-                        if(val < old_vals["min_" .. dt]) then
-                            new_vals["min_" .. dt] = val
-                        elseif(val > old_vals["max_" .. dt]) then
-                            new_vals["max_" .. dt] = val
-                        end
-                    else
-                        new_vals["count_" .. dt] = 1
-                        new_vals["sum_" .. dt] = val
-                        new_vals["avg_" .. dt] = val
-                        new_vals["min_" .. dt] = val
-                        new_vals["max_" .. dt] = val
-                    end
-                    if (old_vals["count_" .. dt .. '_' .. hour]) then
-                        new_vals["count_" .. dt .. '_' .. hour] = old_vals["count_" .. dt .. '_' .. hour] + 1
-                        new_vals["sum_" .. dt .. '_' .. hour] = old_vals["sum_" .. dt .. '_' .. hour] + val
-                        new_vals["avg_" .. dt .. '_' .. hour] = new_vals["sum_" .. dt .. '_' .. hour] / new_vals["count_" .. dt .. '_' .. hour]
-                    else
-                        new_vals["count_" .. dt .. '_' .. hour] = 1
-                        new_vals["sum_" .. dt .. '_' .. hour] = val
-                        new_vals["avg_" .. dt .. '_' .. hour] = val
-                    end
-                else
-                    new_vals["count_" .. dt .. '_' .. hour] = 1
-                    new_vals["sum_" .. dt .. '_' .. hour] = val
-                    new_vals["avg_" .. dt .. '_' .. hour] = val
-                    new_vals["count_" .. dt] = 1
-                    new_vals["sum_" .. dt] = val
-                    new_vals["avg_" .. dt] = val
-                    new_vals["min_" .. dt] = val
-                    new_vals["max_" .. dt] = val
-                    new_vals["count_" .. month] = 1
-                    new_vals["sum_" .. month] = val
-                    new_vals["avg_" .. month] = val
-                    new_vals["min_" .. month] = val
-                    new_vals["max_" .. month] = val 
-                end
-                redis.call('set', KEYS[1], cjson.encode(new_vals))"""
-                self.update_eeris_historical_average_values = self.r.register_script(
-                    eeris_lua_script)
+            self.update_running_values = self.r.register_script(lua_1)
+            # Historical aggregates Lua script
+            self.update_historical_aggregates = self.r.register_script(lua_2)
         except Exception as e:
             raise e
 
@@ -285,8 +167,8 @@ class CockroachHandler:
                     except Exception as e:
                         redis_fail = e
 
-            # eeris historical averages
-            if(os.getenv('APP_NAME') == 'eeris' and 'installations' in table_name):
+            # Historical aggregates
+            if('installations' in table_name):
                 for vd in data_instance:
                     if vd["column"] == 'cenote$timestamp':
                         split = vd['value'].split(':')
@@ -296,15 +178,14 @@ class CockroachHandler:
 
                 redis_fail = None
                 for vd in data_instance:
-                    if 'value' in vd and not vd["column"].startswith("cenote") and (
-                            type(vd["value"]) is int or type(vd["value"]) is float):
+                    if 'value' in vd and vd["column"] == "active" and (type(vd["value"]) is int or type(vd["value"]) is float):
                         try:
                             with self.r.pipeline() as pipe:
                                 while True:
                                     try:
                                         pipe.watch(
                                             f"{table_name}_{vd['column']}_hist")
-                                        self.update_eeris_historical_average_values(
+                                        self.update_historical_aggregates(
                                             keys=[
                                                 f"{table_name}_{vd['column']}_hist"],
                                             args=[vd['value'],
